@@ -35,6 +35,20 @@
   outline-offset: 2px;
 }
 
+.runtime-diagnostics {
+  margin-top: 0.5rem;
+  min-width: 380px;
+  max-width: 72vw;
+  border: 1px solid rgba(100, 180, 255, 0.35);
+  background: rgba(8, 20, 34, 0.72);
+  color: #cfe8ff;
+  border-radius: 0.65rem;
+  padding: 0.45rem 0.65rem;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  text-align: left;
+}
+
 /* ─── Session End Screen ──────────────────────────────────────────── */
 .session-end {
   position: fixed;

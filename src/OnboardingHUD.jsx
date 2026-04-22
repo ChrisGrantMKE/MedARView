@@ -80,7 +80,7 @@ function PatientSilhouette({ x = 0, y = 0, s = 1 }) {
   )
 }
 
-function OnboardingHUD({ step, onContinue, onBeginVisit }) {
+function OnboardingHUD({ step, onContinue, onBeginVisit, speechSupported, micStatus, lastHeardCommand }) {
   const groupRef = useRef(null)
   const { camera } = useThree()
   const [hovering, setHovering] = useState(false)
@@ -188,12 +188,24 @@ function OnboardingHUD({ step, onContinue, onBeginVisit }) {
         fontSize={0.018}
         color="#6bb5ff"
       >
-        [ MIC ] Listening for voice command...
+        {speechSupported ? `[ MIC ] ${micStatus}` : '[ MIC ] SpeechRecognition unsupported'}
+      </Text>
+
+      <Text
+        position={[-0.14, -0.252, 0]}
+        anchorX="center"
+        anchorY="middle"
+        fontSize={0.012}
+        color="#3a7aaa"
+        maxWidth={0.31}
+        textAlign="center"
+      >
+        {lastHeardCommand ? `Last heard: ${lastHeardCommand}` : 'Last heard: --'}
       </Text>
 
       {/* Manual Begin Visit fallback button */}
       <mesh
-        position={[-0.14, -0.272, 0]}
+        position={[-0.14, -0.292, 0]}
         onClick={onBeginVisit}
         onPointerOver={() => setHoverBegin(true)}
         onPointerOut={() => setHoverBegin(false)}
@@ -201,7 +213,7 @@ function OnboardingHUD({ step, onContinue, onBeginVisit }) {
         <planeGeometry args={[0.22, 0.04]} />
         <meshBasicMaterial color={hoverBegin ? btnGreenHover : btnGreen} transparent opacity={0.88} />
       </mesh>
-      <Text position={[-0.14, -0.272, 0.002]} anchorX="center" anchorY="middle" fontSize={0.017} color="#a8f5d0">
+      <Text position={[-0.14, -0.292, 0.002]} anchorX="center" anchorY="middle" fontSize={0.017} color="#a8f5d0">
         TAP TO BEGIN VISIT
       </Text>
 

@@ -3,18 +3,14 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { Text } from '@react-three/drei'
 import { Color, Vector3 } from 'three'
 
-const cameraOffset = new Vector3(0.28, 0.18, -0.65)
+const cameraOffset = new Vector3(-0.28, 0.18, -0.65)
 const panelColor = new Color('#091522')
-const speakerActive = new Color('#0d5f45')
-const speakerInactive = new Color('#152030')
 const endDefault = new Color('#5c0f1a')
 const endHover = new Color('#8f1527')
 
-function HUD({ vitals, conversation, activeSpeaker, onToggleSpeaker, onEndSimulation, patient }) {
+function HUD({ vitals, conversation, activeSpeaker, onEndSimulation, patient, micStatus, speechSupported, lastHeardCommand, speakerAttributionStatus }) {
   const groupRef = useRef(null)
   const { camera } = useThree()
-  const [hoverDoc, setHoverDoc] = useState(false)
-  const [hoverPat, setHoverPat] = useState(false)
   const [hoverEnd, setHoverEnd] = useState(false)
 
   useFrame(() => {
@@ -65,42 +61,17 @@ function HUD({ vitals, conversation, activeSpeaker, onToggleSpeaker, onEndSimula
           CONVERSATION
         </Text>
 
-        {/* Speaker toggle — Doctor */}
-        <mesh
-          position={[0.082, 0.096, 0]}
-          onClick={activeSpeaker !== 'Doctor' ? onToggleSpeaker : undefined}
-          onPointerOver={() => setHoverDoc(true)}
-          onPointerOut={() => setHoverDoc(false)}
-        >
-          <planeGeometry args={[0.092, 0.033]} />
-          <meshBasicMaterial
-            color={activeSpeaker === 'Doctor' ? speakerActive : speakerInactive}
-            transparent
-            opacity={hoverDoc && activeSpeaker !== 'Doctor' ? 0.95 : 0.85}
-          />
-        </mesh>
-        <Text position={[0.082, 0.096, 0.001]} anchorX="center" anchorY="middle" fontSize={0.016}
-          color={activeSpeaker === 'Doctor' ? '#8af3d1' : '#5a7a90'}>
-          Doctor
+        <Text position={[0.255, 0.096, 0]} anchorX="right" anchorY="middle" fontSize={0.015} color="#8af3d1">
+          {`Active: ${activeSpeaker}`}
         </Text>
-
-        {/* Speaker toggle — Patient */}
-        <mesh
-          position={[0.186, 0.096, 0]}
-          onClick={activeSpeaker !== 'Patient' ? onToggleSpeaker : undefined}
-          onPointerOver={() => setHoverPat(true)}
-          onPointerOut={() => setHoverPat(false)}
-        >
-          <planeGeometry args={[0.092, 0.033]} />
-          <meshBasicMaterial
-            color={activeSpeaker === 'Patient' ? speakerActive : speakerInactive}
-            transparent
-            opacity={hoverPat && activeSpeaker !== 'Patient' ? 0.95 : 0.85}
-          />
-        </mesh>
-        <Text position={[0.186, 0.096, 0.001]} anchorX="center" anchorY="middle" fontSize={0.016}
-          color={activeSpeaker === 'Patient' ? '#8af3d1' : '#5a7a90'}>
-          Patient
+        <Text position={[0.255, 0.072, 0]} anchorX="right" anchorY="middle" fontSize={0.013} color="#6bb5ff">
+          {`Mic: ${speechSupported ? micStatus : 'unsupported'}`}
+        </Text>
+        <Text position={[0.255, 0.048, 0]} anchorX="right" anchorY="middle" fontSize={0.012} color="#4f7a9a" maxWidth={0.21} textAlign="right">
+          {speakerAttributionStatus ? `Attribution: ${speakerAttributionStatus}` : 'Attribution: --'}
+        </Text>
+        <Text position={[0.255, 0.024, 0]} anchorX="right" anchorY="middle" fontSize={0.011} color="#3f6888" maxWidth={0.21} textAlign="right">
+          {lastHeardCommand ? `Heard: ${lastHeardCommand}` : 'Heard: --'}
         </Text>
 
         {/* Conversation entries (last 3) */}

@@ -4,6 +4,7 @@ import { ARButton, XR, createXRStore } from '@react-three/xr'
 import HUD from './HUD'
 import OnboardingHUD from './OnboardingHUD'
 import SessionEndScreen from './SessionEndScreen'
+import { inferSpeaker } from './speakerAttribution'
 import './App.css'
 
 const xrStore = createXRStore({
@@ -30,15 +31,68 @@ function App() {
   const [vitals, setVitals] = useState({ systolic: 120, diastolic: 80, spo2: 98 })
   const [conversation, setConversation] = useState([])
   const [activeSpeaker, setActiveSpeaker] = useState('Doctor')
+  const [speechSupported, setSpeechSupported] = useState(true)
+  const [micPermission, setMicPermission] = useState('unknown')
+  const [micStatus, setMicStatus] = useState('idle')
+  const [lastHeardCommand, setLastHeardCommand] = useState('')
+  const [speakerAttributionStatus, setSpeakerAttributionStatus] = useState('Awaiting speech...')
+  const [arSupport, setArSupport] = useState({
+    checked: false,
+    supported: false,
+    reason: 'Checking immersive-ar support...',
+  })
   const sessionStartRef = useRef(Date.now())
   const phaseRef = useRef('onboarding')
   const stepRef = useRef(0)
   const speakerRef = useRef('Doctor')
+  const conversationRef = useRef([])
   const recognitionRef = useRef(null)
 
   useEffect(() => { phaseRef.current = phase }, [phase])
   useEffect(() => { stepRef.current = onboardingStep }, [onboardingStep])
   useEffect(() => { speakerRef.current = activeSpeaker }, [activeSpeaker])
+  useEffect(() => { conversationRef.current = conversation }, [conversation])
+
+  useEffect(() => {
+    const checkAr = async () => {
+      if (!window.isSecureContext) {
+        setArSupport({
+          checked: true,
+          supported: false,
+          reason: 'WebXR AR requires HTTPS (or localhost). Current page is not secure.',
+        })
+        return
+      }
+
+      if (!navigator.xr || !navigator.xr.isSessionSupported) {
+        setArSupport({
+          checked: true,
+          supported: false,
+          reason: 'navigator.xr is unavailable in this browser/runtime.',
+        })
+        return
+      }
+
+      try {
+        const supported = await navigator.xr.isSessionSupported('immersive-ar')
+        setArSupport({
+          checked: true,
+          supported,
+          reason: supported
+            ? 'immersive-ar supported. Use Enter Medical AR HUD.'
+            : 'immersive-ar not reported by browser. Check Quest Browser flags and HTTPS.',
+        })
+      } catch (err) {
+        setArSupport({
+          checked: true,
+          supported: false,
+          reason: `AR capability check error: ${err?.message ?? 'unknown error'}`,
+        })
+      }
+    }
+
+    checkAr()
+  }, [])
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -53,12 +107,31 @@ function App() {
 
   useEffect(() => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (!SR) return
+    if (!SR) {
+      setSpeechSupported(false)
+      setMicStatus('error')
+      setLastHeardCommand('SpeechRecognition API unavailable in this browser.')
+      return
+    }
+
+    const checkMicPermission = async () => {
+      if (!navigator.permissions?.query) return
+      try {
+        const status = await navigator.permissions.query({ name: 'microphone' })
+        setMicPermission(status.state)
+        status.onchange = () => setMicPermission(status.state)
+      } catch (_) {
+        // Permissions API is not always available for microphone.
+      }
+    }
+
+    checkMicPermission()
 
     const rec = new SR()
     rec.continuous = true
     rec.interimResults = true
     rec.lang = 'en-US'
+    setMicStatus('starting')
 
     rec.onresult = (event) => {
       let text = ''
@@ -67,6 +140,11 @@ function App() {
         text += event.results[i][0].transcript
         if (event.results[i].isFinal) hasFinal = true
       }
+
+      if (text.trim()) {
+        setLastHeardCommand(text.trim())
+      }
+
       const normalized = text.toLowerCase().replace(/[^a-z\s]/g, '')
       const currentPhase = phaseRef.current
       const currentStep = stepRef.current
@@ -80,24 +158,69 @@ function App() {
       }
 
       if (currentPhase === 'active' && hasFinal && text.trim()) {
-        setConversation(prev => [...prev, {
-          id: Date.now(),
-          speaker: speakerRef.current,
-          text: text.trim(),
-          timestamp: Date.now(),
-        }])
+        const utterance = text.trim()
+        setSpeakerAttributionStatus('Analyzing speaker...')
+
+        void (async () => {
+          const attribution = await inferSpeaker({
+            utterance,
+            conversation: conversationRef.current,
+            previousSpeaker: speakerRef.current,
+          })
+
+          setActiveSpeaker(attribution.speaker)
+          setSpeakerAttributionStatus(
+            `${attribution.source} | ${attribution.speaker} (${Math.round(attribution.confidence * 100)}%)`
+          )
+
+          setConversation(prev => [
+            ...prev,
+            {
+              id: Date.now(),
+              speaker: attribution.speaker,
+              text: utterance,
+              timestamp: Date.now(),
+            },
+          ])
+        })()
       }
     }
 
-    rec.onerror = (e) => { if (e.error !== 'no-speech') console.warn('SR error:', e.error) }
+    rec.onerror = (e) => {
+      setMicStatus('error')
+      setLastHeardCommand(`Mic error: ${e.error}`)
+      if (e.error !== 'no-speech') console.warn('SR error:', e.error)
+    }
+
+    rec.onstart = () => {
+      setMicStatus('listening')
+    }
 
     rec.onend = () => {
-      if (phaseRef.current !== 'ended') { try { rec.start() } catch (_) {} }
+      if (phaseRef.current !== 'ended') {
+        setMicStatus('starting')
+        try {
+          rec.start()
+        } catch (_) {
+          setMicStatus('error')
+        }
+      }
     }
 
     recognitionRef.current = rec
-    try { rec.start() } catch (_) {}
-    return () => { try { rec.stop() } catch (_) {} }
+    try {
+      rec.start()
+    } catch (_) {
+      setMicStatus('error')
+    }
+
+    return () => {
+      try {
+        rec.stop()
+      } catch (_) {
+        // ignore
+      }
+    }
   }, [])
 
   const handleAdvanceOnboarding = () => setOnboardingStep(prev => prev + 1)
@@ -109,10 +232,9 @@ function App() {
 
   const handleEndSimulation = () => {
     try { recognitionRef.current?.stop() } catch (_) {}
+    setMicStatus('idle')
     setPhase('ended')
   }
-
-  const handleToggleSpeaker = () => setActiveSpeaker(s => s === 'Doctor' ? 'Patient' : 'Doctor')
 
   return (
     <main className="app-shell">
@@ -125,6 +247,10 @@ function App() {
               return 'Enter Medical AR HUD'
             }}
           </ARButton>
+          <div className="runtime-diagnostics" role="status" aria-live="polite">
+            <div>{`AR: ${arSupport.reason}`}</div>
+            <div>{`Mic: ${speechSupported ? `${micStatus} | permission: ${micPermission}` : 'unsupported'}`}</div>
+          </div>
         </div>
       )}
 
@@ -136,6 +262,9 @@ function App() {
                 step={onboardingStep}
                 onContinue={handleAdvanceOnboarding}
                 onBeginVisit={handleBeginVisit}
+                speechSupported={speechSupported}
+                micStatus={micStatus}
+                lastHeardCommand={lastHeardCommand}
               />
             )}
             {phase === 'active' && (
@@ -143,9 +272,12 @@ function App() {
                 vitals={vitals}
                 conversation={conversation}
                 activeSpeaker={activeSpeaker}
-                onToggleSpeaker={handleToggleSpeaker}
                 onEndSimulation={handleEndSimulation}
                 patient={patientRecord}
+                micStatus={micStatus}
+                speechSupported={speechSupported}
+                lastHeardCommand={lastHeardCommand}
+                speakerAttributionStatus={speakerAttributionStatus}
               />
             )}
           </XR>
