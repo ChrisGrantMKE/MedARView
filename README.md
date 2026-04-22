@@ -1,16 +1,51 @@
-# React + Vite
+# MedARView
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+MedARView is a WebXR mockup for a medical smart-glasses heads-up display (HUD), designed to run in the Meta Quest Browser with AR passthrough.
 
-Currently, two official plugins are available:
+The app overlays simulated clinical UI in 3D space using React, Three.js, and React Three XR.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Current Features
 
-## React Compiler
+- AR entry using immersive AR session support
+- Camera-locked HUD panels for glanceable overlays
+- Mock live vitals (blood pressure and SpO2) with periodic updates
+- Voice dictation toggle using browser speech recognition APIs
+- Patient abstract panel with mock history and AI summary
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Tech Stack
 
-## Expanding the ESLint configuration
+- React + Vite
+- three
+- @react-three/fiber
+- @react-three/xr
+- @react-three/drei
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Local Development
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Run dev server:
+
+```bash
+npm run dev
+```
+
+Build for production:
+
+```bash
+npm run build
+```
+
+## WebXR Notes
+
+- WebXR AR generally requires HTTPS (or trusted localhost contexts).
+- mkcert is included as a dev dependency for local certificate workflows.
+- For Quest testing, use Meta Quest Browser and ensure your local network setup allows device access.
+
+## Project Status
+
+Foundational prototype is in place. Next session can focus on HTTPS certificate wiring in Vite, interaction polish, and backend API swap-in points.
