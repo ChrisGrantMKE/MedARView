@@ -3,35 +3,40 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { Text } from '@react-three/drei'
 import { Color, Vector3 } from 'three'
 
-const cameraOffset = new Vector3(0.28, 0.16, -0.65)
+const cameraOffset = new Vector3(0.28, 0.18, -0.65)
 const panelColor = new Color('#091522')
-const buttonOnColor = new Color('#0d8f63')
-const buttonOffColor = new Color('#5a2531')
+const speakerActive = new Color('#0d5f45')
+const speakerInactive = new Color('#152030')
+const endDefault = new Color('#5c0f1a')
+const endHover = new Color('#8f1527')
 
-function HUD({ vitals, isListening, transcript, speechSupported, onToggleListening, patient }) {
+function HUD({ vitals, conversation, activeSpeaker, onToggleSpeaker, onEndSimulation, patient }) {
   const groupRef = useRef(null)
   const { camera } = useThree()
-  const [isHoveringMic, setIsHoveringMic] = useState(false)
+  const [hoverDoc, setHoverDoc] = useState(false)
+  const [hoverPat, setHoverPat] = useState(false)
+  const [hoverEnd, setHoverEnd] = useState(false)
 
   useFrame(() => {
     if (!groupRef.current) return
-
     const worldOffset = cameraOffset.clone().applyQuaternion(camera.quaternion)
     groupRef.current.position.copy(camera.position).add(worldOffset)
     groupRef.current.quaternion.copy(camera.quaternion)
   })
 
-  const summaryText = useMemo(() => {
-    return [
-      `Patient: ${patient.name} (${patient.age})`,
-      `ID: ${patient.id}`,
-      `History: ${patient.history}`,
-      `AI Abstract: ${patient.aiAbstract}`,
-    ].join('\n')
-  }, [patient])
+  const summaryText = useMemo(() => [
+    `Patient: ${patient.name} (${patient.age})`,
+    `ID: ${patient.id}`,
+    `History: ${patient.history}`,
+    `AI Abstract: ${patient.aiAbstract}`,
+  ].join('\n'), [patient])
+
+  const recentConvo = conversation.slice(-3)
 
   return (
     <group ref={groupRef}>
+
+      {/* ─── LIVE VITALS ─── */}
       <group position={[0, 0.1, 0]}>
         <mesh position={[0, 0, -0.002]}>
           <planeGeometry args={[0.56, 0.2]} />
@@ -48,54 +53,92 @@ function HUD({ vitals, isListening, transcript, speechSupported, onToggleListeni
         </Text>
       </group>
 
-      <group position={[0, -0.1, 0]}>
+      {/* ─── CONVERSATION LOG ─── */}
+      <group position={[0, -0.12, 0]}>
         <mesh position={[0, 0, -0.002]}>
-          <planeGeometry args={[0.56, 0.2]} />
+          <planeGeometry args={[0.56, 0.26]} />
           <meshBasicMaterial color={panelColor} transparent opacity={0.58} />
         </mesh>
-        <Text position={[-0.255, 0.055, 0]} anchorX="left" anchorY="middle" fontSize={0.027} color="#cfe8ff">
-          VOICE DICTATION
-        </Text>
-        <Text
-          position={[-0.255, -0.002, 0]}
-          anchorX="left"
-          anchorY="middle"
-          fontSize={0.021}
-          maxWidth={0.44}
-          textAlign="left"
-          color="#ffffff"
-        >
-          {speechSupported ? transcript : 'Speech recognition unavailable in this browser.'}
+
+        {/* Header */}
+        <Text position={[-0.255, 0.096, 0]} anchorX="left" anchorY="middle" fontSize={0.022} color="#cfe8ff">
+          CONVERSATION
         </Text>
 
+        {/* Speaker toggle — Doctor */}
         <mesh
-          position={[0.205, -0.055, 0]}
-          onClick={onToggleListening}
-          onPointerOver={() => setIsHoveringMic(true)}
-          onPointerOut={() => setIsHoveringMic(false)}
+          position={[0.082, 0.096, 0]}
+          onClick={activeSpeaker !== 'Doctor' ? onToggleSpeaker : undefined}
+          onPointerOver={() => setHoverDoc(true)}
+          onPointerOut={() => setHoverDoc(false)}
         >
-          <planeGeometry args={[0.09, 0.05]} />
+          <planeGeometry args={[0.092, 0.033]} />
           <meshBasicMaterial
-            color={isListening ? buttonOnColor : buttonOffColor}
+            color={activeSpeaker === 'Doctor' ? speakerActive : speakerInactive}
             transparent
-            opacity={isHoveringMic ? 0.95 : 0.84}
+            opacity={hoverDoc && activeSpeaker !== 'Doctor' ? 0.95 : 0.85}
           />
         </mesh>
-        <Text position={[0.205, -0.055, 0.002]} anchorX="center" anchorY="middle" fontSize={0.017} color="#ffffff">
-          {isListening ? 'STOP' : 'MIC'}
+        <Text position={[0.082, 0.096, 0.001]} anchorX="center" anchorY="middle" fontSize={0.016}
+          color={activeSpeaker === 'Doctor' ? '#8af3d1' : '#5a7a90'}>
+          Doctor
         </Text>
+
+        {/* Speaker toggle — Patient */}
+        <mesh
+          position={[0.186, 0.096, 0]}
+          onClick={activeSpeaker !== 'Patient' ? onToggleSpeaker : undefined}
+          onPointerOver={() => setHoverPat(true)}
+          onPointerOut={() => setHoverPat(false)}
+        >
+          <planeGeometry args={[0.092, 0.033]} />
+          <meshBasicMaterial
+            color={activeSpeaker === 'Patient' ? speakerActive : speakerInactive}
+            transparent
+            opacity={hoverPat && activeSpeaker !== 'Patient' ? 0.95 : 0.85}
+          />
+        </mesh>
+        <Text position={[0.186, 0.096, 0.001]} anchorX="center" anchorY="middle" fontSize={0.016}
+          color={activeSpeaker === 'Patient' ? '#8af3d1' : '#5a7a90'}>
+          Patient
+        </Text>
+
+        {/* Conversation entries (last 3) */}
+        {recentConvo.length === 0 ? (
+          <Text position={[-0.255, 0.006, 0]} anchorX="left" anchorY="middle" fontSize={0.018} color="#3a5a70">
+            Conversation will appear here...
+          </Text>
+        ) : (
+          recentConvo.map((entry, i) => {
+            const yPos = 0.052 - i * 0.052
+            const label = entry.speaker === 'Doctor' ? 'Dr' : 'Pt'
+            const labelColor = entry.speaker === 'Doctor' ? '#8af3d1' : '#f3c96b'
+            const truncated = entry.text.length > 46 ? entry.text.slice(0, 46) + '\u2026' : entry.text
+            return (
+              <group key={entry.id}>
+                <Text position={[-0.255, yPos, 0]} anchorX="left" anchorY="middle" fontSize={0.018} color={labelColor}>
+                  {`${label}:`}
+                </Text>
+                <Text position={[-0.213, yPos, 0]} anchorX="left" anchorY="middle" fontSize={0.018} color="#e8f4ff">
+                  {truncated}
+                </Text>
+              </group>
+            )
+          })
+        )}
       </group>
 
-      <group position={[0, -0.35, 0]}>
+      {/* ─── PATIENT ABSTRACT ─── */}
+      <group position={[0, -0.39, 0]}>
         <mesh position={[0, 0, -0.002]}>
-          <planeGeometry args={[0.56, 0.32]} />
+          <planeGeometry args={[0.56, 0.30]} />
           <meshBasicMaterial color={panelColor} transparent opacity={0.56} />
         </mesh>
-        <Text position={[-0.255, 0.128, 0]} anchorX="left" anchorY="middle" fontSize={0.027} color="#cfe8ff">
+        <Text position={[-0.255, 0.118, 0]} anchorX="left" anchorY="middle" fontSize={0.027} color="#cfe8ff">
           PATIENT ABSTRACT
         </Text>
         <Text
-          position={[-0.255, 0.03, 0]}
+          position={[-0.255, 0.028, 0]}
           anchorX="left"
           anchorY="top"
           fontSize={0.02}
@@ -107,6 +150,23 @@ function HUD({ vitals, isListening, transcript, speechSupported, onToggleListeni
           {summaryText}
         </Text>
       </group>
+
+      {/* ─── END SIMULATION BUTTON ─── */}
+      <group position={[0, -0.605, 0]}>
+        <mesh
+          position={[0, 0, -0.002]}
+          onClick={onEndSimulation}
+          onPointerOver={() => setHoverEnd(true)}
+          onPointerOut={() => setHoverEnd(false)}
+        >
+          <planeGeometry args={[0.56, 0.068]} />
+          <meshBasicMaterial color={hoverEnd ? endHover : endDefault} transparent opacity={0.9} />
+        </mesh>
+        <Text position={[0, 0, 0]} anchorX="center" anchorY="middle" fontSize={0.023} color="#ffcdd3">
+          END SIMULATION
+        </Text>
+      </group>
+
     </group>
   )
 }
