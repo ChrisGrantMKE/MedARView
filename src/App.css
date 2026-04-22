@@ -1,0 +1,36 @@
+.app-shell {
+  width: 100vw;
+  height: 100vh;
+  position: relative;
+  overflow: hidden;
+}
+
+.ar-controls {
+  position: absolute;
+  top: 1rem;
+  left: 50%;
+  z-index: 10;
+  transform: translateX(-50%);
+}
+
+.ar-toggle {
+  border: 1px solid rgba(186, 216, 255, 0.55);
+  background: rgba(8, 20, 34, 0.72);
+  color: #f3f7fc;
+  font-weight: 600;
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+  border-radius: 999px;
+  padding: 0.72rem 1.3rem;
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+}
+
+.ar-toggle:hover {
+  background: rgba(11, 27, 46, 0.84);
+}
+
+.ar-toggle:focus-visible {
+  outline: 2px solid #9cd7ff;
+  outline-offset: 2px;
+}
