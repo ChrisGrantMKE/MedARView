@@ -1,3 +1,5 @@
+Run one command by mode: `npm run stack:ui-only` for UI-only testing, or `npm run stack:full-dictation` for full dictation + gateway.
+
 # MedARView
 
 MedARView is a WebXR mockup for a medical smart-glasses heads-up display (HUD), designed to run in the Meta Quest Browser with AR passthrough.
@@ -153,6 +155,33 @@ AssemblyAI is also a strong option, but it lands behind Deepgram for this repo.
 - Since the app is self-hosted at home with an existing domain, terminate HTTPS on your own host or reverse proxy so Quest mic access and WebXR permissions remain reliable.
 - Potential privacy and HIPAA-adjacent concerns are tracked separately in `HIPAA.md` for this folder, even though this test environment uses mock data.
 - The built-in budget tracker is local-state based and should be treated as a guardrail, not a billing source of truth.
+
+### Dictation Toggle Modes (UI-Only vs Full Service)
+
+You can now toggle speech behavior for local startup.
+
+Frontend toggles:
+
+- `VITE_ENABLE_DICTATION=true|false`
+      - `false`: UI-only mode. No browser speech recognition loop is started, no transcript capture occurs, and visit flow still works for UI testing.
+- `VITE_ENABLE_EXTERNAL_DICTATION=true|false`
+      - `false`: keeps local dictation flow active but disables external attribution/dictation API calls.
+
+Backend toggle:
+
+- `MEDARVIEW_ENABLE_GOOGLE_SPEECH=true|false`
+      - `false`: server reports Google speech as disabled and returns `503` on `/diarize`.
+      - `true`: enables the Google speech path once the streaming implementation is wired.
+
+Recommended startup profiles:
+
+1. UI-only test run:
+       - `VITE_ENABLE_DICTATION=false`
+       - `MEDARVIEW_ENABLE_GOOGLE_SPEECH=false`
+2. Full dictation-ready run:
+       - `VITE_ENABLE_DICTATION=true`
+       - `VITE_ENABLE_EXTERNAL_DICTATION=true`
+       - `MEDARVIEW_ENABLE_GOOGLE_SPEECH=true`
 
 ## Dictation / Attribution API Notes
 

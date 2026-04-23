@@ -13,6 +13,7 @@ const port = Number(process.env.MEDARVIEW_SPEECH_GATEWAY_PORT || 8787)
 const budgetMinutes = Number(process.env.MEDARVIEW_SPEECH_BUDGET_MINUTES || 60)
 const budgetWindowDays = Number(process.env.MEDARVIEW_SPEECH_BUDGET_WINDOW_DAYS || 30)
 const provider = process.env.MEDARVIEW_DICTATION_PROVIDER || 'google-medical-proxy'
+const googleSpeechEnabled = String(process.env.MEDARVIEW_ENABLE_GOOGLE_SPEECH || 'false').toLowerCase() === 'true'
 
 function json(res, status, payload) {
   res.writeHead(status, {
@@ -173,6 +174,7 @@ const server = createServer(async (req, res) => {
     json(res, 200, {
       ok: true,
       provider,
+      googleSpeechEnabled,
       googleCredentialsConfigured: Boolean(process.env.GOOGLE_APPLICATION_CREDENTIALS),
       note: 'Budget-aware local speech gateway scaffold for MedARView test environments.',
     })
@@ -272,6 +274,14 @@ const server = createServer(async (req, res) => {
   }
 
   if (req.method === 'POST' && req.url === '/diarize') {
+    if (!googleSpeechEnabled) {
+      json(res, 503, {
+        error: 'Google speech integration is disabled by server config.',
+        nextStep: 'Set MEDARVIEW_ENABLE_GOOGLE_SPEECH=true when you want full dictation services enabled.',
+      })
+      return
+    }
+
     json(res, 501, {
       error: 'Streaming transcription proxy not implemented yet.',
       nextStep: 'Wire this gateway to Google Cloud Speech-to-Text medical_conversation streaming and return speaker-labeled transcript segments.',

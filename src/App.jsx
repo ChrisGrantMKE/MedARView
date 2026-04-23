@@ -5,7 +5,7 @@ import HUD from './HUD'
 import OnboardingHUD from './OnboardingHUD'
 import SessionEndScreen from './SessionEndScreen'
 import { inferSpeaker } from './speakerAttribution'
-import { speechConfig, getSpeechProviderLabel } from './speechConfig'
+import { speechConfig, getSpeechProviderLabel, shouldUseExternalDictation } from './speechConfig'
 import { formatBudgetSummary, getSpeechBudgetSnapshot, recordSpeechSession } from './speechBudget'
 import './App.css'
 
@@ -59,6 +59,8 @@ function App() {
 
   const speechProviderLabel = getSpeechProviderLabel()
   const budgetStatus = formatBudgetSummary(budgetSnapshot)
+  const dictationEnabled = speechConfig.dictationEnabled
+  const externalDictationActive = shouldUseExternalDictation()
 
   useEffect(() => {
     const checkAr = async () => {
@@ -113,6 +115,15 @@ function App() {
   }, [])
 
   useEffect(() => {
+    if (!dictationEnabled) {
+      setSpeechSupported(true)
+      setMicPermission('n/a')
+      setMicStatus('disabled')
+      setLastHeardCommand('Dictation disabled by config.')
+      setSpeakerAttributionStatus('Dictation disabled by config.')
+      return
+    }
+
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
     if (!SR) {
       setSpeechSupported(false)
@@ -234,11 +245,18 @@ function App() {
         // ignore
       }
     }
-  }, [])
+  }, [dictationEnabled, budgetSnapshot.exhausted])
 
   const handleAdvanceOnboarding = () => setOnboardingStep(prev => prev + 1)
 
   const handleBeginVisit = () => {
+    if (!dictationEnabled) {
+      sessionStartRef.current = Date.now()
+      sessionBudgetStartRef.current = null
+      setPhase('active')
+      return
+    }
+
     if (budgetSnapshot.exhausted) {
       setLastHeardCommand('Speech budget exhausted for the current 30-day window.')
       return
@@ -251,7 +269,7 @@ function App() {
 
   const handleEndSimulation = () => {
     try { recognitionRef.current?.stop() } catch (_) {}
-    if (sessionBudgetStartRef.current) {
+    if (dictationEnabled && sessionBudgetStartRef.current) {
       setBudgetSnapshot(recordSpeechSession(sessionBudgetStartRef.current, Date.now()))
       sessionBudgetStartRef.current = null
     }
@@ -273,6 +291,8 @@ function App() {
           <div className="runtime-diagnostics" role="status" aria-live="polite">
             <div>{`AR: ${arSupport.reason}`}</div>
             <div>{`Mic: ${speechSupported ? `${micStatus} | permission: ${micPermission}` : 'unsupported'}`}</div>
+            <div>{`Dictation enabled: ${dictationEnabled ? 'yes' : 'no (UI-only mode)'}`}</div>
+            <div>{`External dictation: ${externalDictationActive ? 'enabled' : 'disabled'}`}</div>
             <div>{`Dictation provider: ${speechProviderLabel}`}</div>
             <div>{`Speech budget: ${budgetStatus}`}</div>
             <div>{`Dictation API: ${speechConfig.dictationApiUrl || 'not configured'}`}</div>

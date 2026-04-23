@@ -1,3 +1,5 @@
+import { speechConfig } from './speechConfig'
+
 const API_URL = import.meta.env.VITE_SPEAKER_API_URL
 
 const doctorKeywords = [
@@ -51,6 +53,10 @@ function heuristicAttribution({ utterance, previousSpeaker }) {
 }
 
 async function callApiAttribution({ utterance, conversationTail, previousSpeaker }) {
+  if (!speechConfig.externalDictationEnabled) {
+    return null
+  }
+
   if (!API_URL) {
     return null
   }

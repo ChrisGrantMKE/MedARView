@@ -2,12 +2,30 @@ const DEFAULT_PROVIDER = 'google-medical-proxy'
 const DEFAULT_BUDGET_MINUTES = 60
 const DEFAULT_WINDOW_DAYS = 30
 
+function parseBoolean(value, fallback) {
+  if (value === undefined || value === null || value === '') {
+    return fallback
+  }
+
+  const normalized = String(value).trim().toLowerCase()
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) {
+    return true
+  }
+  if (['0', 'false', 'no', 'off'].includes(normalized)) {
+    return false
+  }
+
+  return fallback
+}
+
 function parsePositiveNumber(value, fallback) {
   const parsed = Number(value)
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
 }
 
 export const speechConfig = {
+  dictationEnabled: parseBoolean(import.meta.env.VITE_ENABLE_DICTATION, true),
+  externalDictationEnabled: parseBoolean(import.meta.env.VITE_ENABLE_EXTERNAL_DICTATION, true),
   commandProvider: 'browser-web-speech',
   dictationProvider: import.meta.env.VITE_DICTATION_PROVIDER || DEFAULT_PROVIDER,
   dictationApiUrl: import.meta.env.VITE_DICTATION_API_URL || '',
@@ -30,4 +48,8 @@ export function getSpeechProviderLabel() {
 
 export function isExternalDictationProvider() {
   return speechConfig.dictationProvider !== 'browser-mock'
+}
+
+export function shouldUseExternalDictation() {
+  return speechConfig.dictationEnabled && speechConfig.externalDictationEnabled && isExternalDictationProvider()
 }
