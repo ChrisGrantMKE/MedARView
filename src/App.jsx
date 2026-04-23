@@ -5,6 +5,8 @@ import HUD from './HUD'
 import OnboardingHUD from './OnboardingHUD'
 import SessionEndScreen from './SessionEndScreen'
 import { inferSpeaker } from './speakerAttribution'
+import { speechConfig, getSpeechProviderLabel } from './speechConfig'
+import { formatBudgetSummary, getSpeechBudgetSnapshot, recordSpeechSession } from './speechBudget'
 import './App.css'
 
 const xrStore = createXRStore({
@@ -36,12 +38,14 @@ function App() {
   const [micStatus, setMicStatus] = useState('idle')
   const [lastHeardCommand, setLastHeardCommand] = useState('')
   const [speakerAttributionStatus, setSpeakerAttributionStatus] = useState('Awaiting speech...')
+  const [budgetSnapshot, setBudgetSnapshot] = useState(() => getSpeechBudgetSnapshot())
   const [arSupport, setArSupport] = useState({
     checked: false,
     supported: false,
     reason: 'Checking immersive-ar support...',
   })
   const sessionStartRef = useRef(Date.now())
+  const sessionBudgetStartRef = useRef(null)
   const phaseRef = useRef('onboarding')
   const stepRef = useRef(0)
   const speakerRef = useRef('Doctor')
@@ -52,6 +56,9 @@ function App() {
   useEffect(() => { stepRef.current = onboardingStep }, [onboardingStep])
   useEffect(() => { speakerRef.current = activeSpeaker }, [activeSpeaker])
   useEffect(() => { conversationRef.current = conversation }, [conversation])
+
+  const speechProviderLabel = getSpeechProviderLabel()
+  const budgetStatus = formatBudgetSummary(budgetSnapshot)
 
   useEffect(() => {
     const checkAr = async () => {
@@ -149,9 +156,15 @@ function App() {
       const currentPhase = phaseRef.current
       const currentStep = stepRef.current
 
-      if (currentPhase === 'onboarding' && currentStep === 3) {
+      if (currentPhase === 'onboarding' && currentStep === 4) {
         if (normalized.includes('begin visit') || normalized.includes('med view') || normalized.includes('medical view')) {
+          if (budgetSnapshot.exhausted) {
+            setLastHeardCommand('Speech budget exhausted for the current 30-day window.')
+            return
+          }
+
           sessionStartRef.current = Date.now()
+          sessionBudgetStartRef.current = Date.now()
           setPhase('active')
         }
         return
@@ -226,12 +239,22 @@ function App() {
   const handleAdvanceOnboarding = () => setOnboardingStep(prev => prev + 1)
 
   const handleBeginVisit = () => {
+    if (budgetSnapshot.exhausted) {
+      setLastHeardCommand('Speech budget exhausted for the current 30-day window.')
+      return
+    }
+
     sessionStartRef.current = Date.now()
+    sessionBudgetStartRef.current = Date.now()
     setPhase('active')
   }
 
   const handleEndSimulation = () => {
     try { recognitionRef.current?.stop() } catch (_) {}
+    if (sessionBudgetStartRef.current) {
+      setBudgetSnapshot(recordSpeechSession(sessionBudgetStartRef.current, Date.now()))
+      sessionBudgetStartRef.current = null
+    }
     setMicStatus('idle')
     setPhase('ended')
   }
@@ -250,6 +273,9 @@ function App() {
           <div className="runtime-diagnostics" role="status" aria-live="polite">
             <div>{`AR: ${arSupport.reason}`}</div>
             <div>{`Mic: ${speechSupported ? `${micStatus} | permission: ${micPermission}` : 'unsupported'}`}</div>
+            <div>{`Dictation provider: ${speechProviderLabel}`}</div>
+            <div>{`Speech budget: ${budgetStatus}`}</div>
+            <div>{`Dictation API: ${speechConfig.dictationApiUrl || 'not configured'}`}</div>
           </div>
         </div>
       )}
@@ -265,6 +291,8 @@ function App() {
                 speechSupported={speechSupported}
                 micStatus={micStatus}
                 lastHeardCommand={lastHeardCommand}
+                speechProviderLabel={speechProviderLabel}
+                budgetStatus={budgetStatus}
               />
             )}
             {phase === 'active' && (
@@ -278,6 +306,8 @@ function App() {
                 speechSupported={speechSupported}
                 lastHeardCommand={lastHeardCommand}
                 speakerAttributionStatus={speakerAttributionStatus}
+                speechProviderLabel={speechProviderLabel}
+                budgetStatus={budgetStatus}
               />
             )}
           </XR>

@@ -1,12 +1,25 @@
 /**
  * MedARView – Visit Summarization
  *
- * CURRENT APPROACH: Lightweight extractive summarization.
- * Sentences are scored by clinical-keyword density; the highest-scoring
- * sentences are used to build the visit abstract. Works entirely client-side
- * with no external dependencies.
+ * CURRENT APPROACH: Hybrid extractive-to-SOAP formatter.
+ * Every spoken turn is broken into sentences and scored against seven clinical
+ * keyword categories. Speaker role (Doctor vs Patient) is already attached by
+ * the attribution pipeline. Sentences are routed into SOAP sections by
+ * combining category hits with speaker role, then formatted as a structured
+ * draft note. Works entirely client-side with no external dependencies, no
+ * model download, and no network calls.
  *
- * ─── RECOMMENDED UPGRADE PATH ────────────────────────────────────────────
+ * SOAP routing logic:
+ *   S — Patient-speaker sentences matching Pain, Symptoms, or History.
+ *       First patient turn is always used as chief complaint.
+ *   O — Captured vitals plus full clinical topic list detected in conversation.
+ *   A — Doctor-speaker sentences matching Cardiovascular, Respiratory,
+ *       Pain, Symptoms, or History.
+ *   P — Doctor-speaker sentences matching Medications, or any sentence
+ *       containing plan-signal keywords (follow-up, refer, prescribe,
+ *       schedule, monitor, recommend, start, continue, stop, taper, etc.).
+ *
+ * ─── UPGRADE PATHS ───────────────────────────────────────────────────────
  *
  *  Option A — In-browser LLM (no server, fully private):
  *    npm install @xenova/transformers
@@ -15,7 +28,9 @@
  *      import { pipeline } from '@xenova/transformers'
  *      const summarizer = await pipeline('summarization', 'Xenova/distilbart-cnn-6-6')
  *      const [result] = await summarizer(fullText, { max_new_tokens: 150 })
- *      // result.summary_text replaces the extractive block below
+ *      // result.summary_text replaces the formatter below
+ *
+ *    Tradeoffs: ~250 MB one-time download, 10–30s inference, Quest WASM uncertain.
  *
  *  Option B — Server API (highest clinical quality):
  *    Add a Node/Express endpoint POST /api/summarize that calls GPT-4o:
@@ -84,44 +99,81 @@ export function generateAbstract(conversation, vitals, startTime) {
       text: s,
       speaker: e.speaker,
       score: scoreText(s),
+      categories: CLINICAL_PATTERNS.filter(({ re }) => re.test(s)).map(({ label }) => label),
     }))
   )
 
-  const topStatements = [...allSentences]
-    .filter(s => s.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 4)
-    .map(s => `  \u2022 [${s.speaker}] ${s.text.length > 110 ? s.text.slice(0, 110) + '\u2026' : s.text}`)
+  const trunc = (s, len = 120) => s.length > len ? s.slice(0, len) + '\u2026' : s
 
-  const chiefComplaint = patientEntries[0]?.text ?? 'Not verbally documented'
-  const truncatedCC =
-    chiefComplaint.length > 140 ? chiefComplaint.slice(0, 140) + '\u2026' : chiefComplaint
+  // S — Subjective: patient-reported symptoms, history, pain
+  const SUBJECTIVE_CATS = new Set(['Pain', 'Symptoms', 'History'])
+  const chiefComplaint = patientEntries[0]?.text ?? null
+  const subjectiveSentences = allSentences
+    .filter(s => s.speaker === 'Patient' && s.categories.some(c => SUBJECTIVE_CATS.has(c)))
+    .slice(0, 3)
 
+  // O — Objective: vitals + detected topic list
   const detectedTopics = CLINICAL_PATTERNS
     .filter(({ re }) => conversation.some(e => re.test(e.text)))
     .map(({ label }) => label)
 
-  return [
-    `\u2500\u2500 VISIT SUMMARY \u2500\u2500`,
-    `Duration:       ${duration}`,
-    `Doctor turns:   ${doctorEntries.length}`,
-    `Patient turns:  ${patientEntries.length}`,
+  // A — Assessment: doctor statements on clinical categories
+  const ASSESSMENT_CATS = new Set(['Cardiovascular', 'Respiratory', 'Pain', 'Symptoms', 'History'])
+  const assessmentSentences = allSentences
+    .filter(s => s.speaker === 'Doctor' && s.categories.some(c => ASSESSMENT_CATS.has(c)))
+    .slice(0, 3)
+
+  // P — Plan: doctor medication statements + plan-signal keywords
+  const PLAN_RE = /follow.?up|return|refer|prescri|schedule|monitor|recommend|start|continue|increase|decrease|stop|hold|taper/i
+  const planSentences = allSentences
+    .filter(s =>
+      s.speaker === 'Doctor' &&
+      (s.categories.includes('Medications') || PLAN_RE.test(s.text))
+    )
+    .slice(0, 3)
+
+  // Build SOAP output
+  const lines = [
+    `\u2500\u2500 VISIT NOTE (DRAFT) \u2500\u2500`,
+    `Duration: ${duration}  |  Doctor turns: ${doctorEntries.length}  |  Patient turns: ${patientEntries.length}`,
     '',
-    `CHIEF COMPLAINT`,
-    truncatedCC,
+    `S \u2014 SUBJECTIVE`,
+  ]
+
+  if (chiefComplaint) lines.push(`  Chief complaint: ${trunc(chiefComplaint)}`)
+  subjectiveSentences.forEach(s => {
+    if (s.text !== chiefComplaint) lines.push(`  ${trunc(s.text)}`)
+  })
+  if (!chiefComplaint && subjectiveSentences.length === 0) {
+    lines.push('  No patient-reported symptoms captured.')
+  }
+
+  lines.push('', `O \u2014 OBJECTIVE`)
+  lines.push(`  BP: ${vitals.systolic}/${vitals.diastolic} mmHg  |  SpO\u2082: ${vitals.spo2}%`)
+  lines.push(
+    detectedTopics.length > 0
+      ? `  Topics discussed: ${detectedTopics.join(', ')}`
+      : '  No clinical topics detected.'
+  )
+
+  lines.push('', `A \u2014 ASSESSMENT`)
+  if (assessmentSentences.length > 0) {
+    assessmentSentences.forEach(s => lines.push(`  ${trunc(s.text)}`))
+  } else {
+    lines.push('  No physician assessment statements captured.')
+  }
+
+  lines.push('', `P \u2014 PLAN`)
+  if (planSentences.length > 0) {
+    planSentences.forEach(s => lines.push(`  ${trunc(s.text)}`))
+  } else {
+    lines.push('  No plan or medication statements captured.')
+  }
+
+  lines.push(
     '',
-    `CLINICAL TOPICS DETECTED`,
-    detectedTopics.length > 0 ? detectedTopics.join(', ') : 'None identified',
-    '',
-    `KEY STATEMENTS`,
-    topStatements.length > 0
-      ? topStatements.join('\n')
-      : '  \u2022 No high-relevance statements detected',
-    '',
-    `VITALS AT CLOSE`,
-    `  BP:    ${vitals.systolic}/${vitals.diastolic} mmHg`,
-    `  SpO\u2082:  ${vitals.spo2}%`,
-    '',
-    `\u26A0  AI-assisted draft \u2014 requires physician review before use in medical records.`,
-  ].join('\n')
+    `\u26A0  AI-assisted draft \u2014 requires physician review before use in medical records.`
+  )
+
+  return lines.join('\n')
 }

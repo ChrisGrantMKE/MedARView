@@ -8,7 +8,7 @@ const panelColor = new Color('#091522')
 const endDefault = new Color('#5c0f1a')
 const endHover = new Color('#8f1527')
 
-function HUD({ vitals, conversation, activeSpeaker, onEndSimulation, patient, micStatus, speechSupported, lastHeardCommand, speakerAttributionStatus }) {
+function HUD({ vitals, conversation, activeSpeaker, onEndSimulation, patient, micStatus, speechSupported, lastHeardCommand, speakerAttributionStatus, speechProviderLabel, budgetStatus }) {
   const groupRef = useRef(null)
   const { camera } = useThree()
   const [hoverEnd, setHoverEnd] = useState(false)
@@ -71,6 +71,12 @@ function HUD({ vitals, conversation, activeSpeaker, onEndSimulation, patient, mi
           {speakerAttributionStatus ? `Attribution: ${speakerAttributionStatus}` : 'Attribution: --'}
         </Text>
         <Text position={[0.255, 0.024, 0]} anchorX="right" anchorY="middle" fontSize={0.011} color="#3f6888" maxWidth={0.21} textAlign="right">
+          {speechProviderLabel ? `Provider: ${speechProviderLabel}` : 'Provider: --'}
+        </Text>
+        <Text position={[0.255, 0.001, 0]} anchorX="right" anchorY="middle" fontSize={0.011} color="#3f6888" maxWidth={0.21} textAlign="right">
+          {budgetStatus ? `Budget: ${budgetStatus}` : 'Budget: --'}
+        </Text>
+        <Text position={[0.255, -0.022, 0]} anchorX="right" anchorY="middle" fontSize={0.011} color="#3f6888" maxWidth={0.21} textAlign="right">
           {lastHeardCommand ? `Heard: ${lastHeardCommand}` : 'Heard: --'}
         </Text>
 
@@ -81,7 +87,7 @@ function HUD({ vitals, conversation, activeSpeaker, onEndSimulation, patient, mi
           </Text>
         ) : (
           recentConvo.map((entry, i) => {
-            const yPos = 0.052 - i * 0.052
+            const yPos = 0.03 - i * 0.052
             const label = entry.speaker === 'Doctor' ? 'Dr' : 'Pt'
             const labelColor = entry.speaker === 'Doctor' ? '#8af3d1' : '#f3c96b'
             const truncated = entry.text.length > 46 ? entry.text.slice(0, 46) + '\u2026' : entry.text

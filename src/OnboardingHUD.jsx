@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
-import { Text, Line } from '@react-three/drei'
+import { Text, Image } from '@react-three/drei'
 import { Vector3 } from 'three'
+import seatedOutlineUrl from './assets/Seated.svg'
 
 const obOffset = new Vector3(0, 0.05, -0.72)
 const panelDark = '#091522'
@@ -24,63 +25,16 @@ const STEPS = [
   {
     heading: null,
     body: "MedARView restores presence by moving clinical intelligence into the doctor's field of vision, enabling eye-contact-first care while eliminating the documentation burden that follows every patient encounter.",
-    cta: 'Continue to Begin',
+    cta: 'Continue',
+  },
+  {
+    heading: 'Recording & Data Notice',
+    body: 'This app uses your microphone to capture and transcribe conversation audio during a visit session.\n\nAudio is streamed to a third-party speech recognition service for transcription and speaker identification. Transcripts are stored temporarily for this session only and are not transmitted to any additional parties.\n\nThis is a test environment using mock data only. Do not conduct real patient visits using this prototype.\n\nBy pressing Accept & Continue you consent to microphone capture and transcription for the duration of this demo session.',
+    cta: 'Accept & Continue',
   },
 ]
 
-function circlePoints(cx, cy, r, segs = 24) {
-  return Array.from({ length: segs + 1 }, (_, i) => {
-    const a = (i / segs) * Math.PI * 2
-    return [cx + Math.cos(a) * r, cy + Math.sin(a) * r, 0]
-  })
-}
-
-function PatientSilhouette({ x = 0, y = 0, s = 1 }) {
-  const p = {
-    color: '#6bb5ff',
-    lineWidth: 1.5,
-    dashed: true,
-    dashScale: 40,
-    gapSize: 0.3,
-  }
-
-  return (
-    <group>
-      {/* Head */}
-      <Line points={circlePoints(x, y + 0.14 * s, 0.048 * s)} {...p} />
-      {/* Neck */}
-      <Line points={[[x, y + 0.092 * s, 0], [x, y + 0.074 * s, 0]]} {...p} />
-      {/* Shoulders */}
-      <Line points={[[x - 0.092 * s, y + 0.064 * s, 0], [x + 0.092 * s, y + 0.064 * s, 0]]} {...p} />
-      {/* Left arm */}
-      <Line points={[
-        [x - 0.092 * s, y + 0.064 * s, 0],
-        [x - 0.112 * s, y + 0.000 * s, 0],
-        [x - 0.102 * s, y - 0.060 * s, 0],
-      ]} {...p} />
-      {/* Right arm */}
-      <Line points={[
-        [x + 0.092 * s, y + 0.064 * s, 0],
-        [x + 0.112 * s, y + 0.000 * s, 0],
-        [x + 0.102 * s, y - 0.060 * s, 0],
-      ]} {...p} />
-      {/* Left torso side */}
-      <Line points={[[x - 0.068 * s, y + 0.064 * s, 0], [x - 0.068 * s, y - 0.060 * s, 0]]} {...p} />
-      {/* Right torso side */}
-      <Line points={[[x + 0.068 * s, y + 0.064 * s, 0], [x + 0.068 * s, y - 0.060 * s, 0]]} {...p} />
-      {/* Hip / lap */}
-      <Line points={[[x - 0.092 * s, y - 0.060 * s, 0], [x + 0.092 * s, y - 0.060 * s, 0]]} {...p} />
-      {/* Left knee */}
-      <Line points={[[x - 0.052 * s, y - 0.060 * s, 0], [x - 0.052 * s, y - 0.136 * s, 0]]} {...p} />
-      {/* Right knee */}
-      <Line points={[[x + 0.052 * s, y - 0.060 * s, 0], [x + 0.052 * s, y - 0.136 * s, 0]]} {...p} />
-      {/* Floor / feet */}
-      <Line points={[[x - 0.092 * s, y - 0.136 * s, 0], [x + 0.092 * s, y - 0.136 * s, 0]]} {...p} />
-    </group>
-  )
-}
-
-function OnboardingHUD({ step, onContinue, onBeginVisit, speechSupported, micStatus, lastHeardCommand }) {
+function OnboardingHUD({ step, onContinue, onBeginVisit, speechSupported, micStatus, lastHeardCommand, speechProviderLabel, budgetStatus }) {
   const groupRef = useRef(null)
   const { camera } = useThree()
   const [hovering, setHovering] = useState(false)
@@ -93,25 +47,29 @@ function OnboardingHUD({ step, onContinue, onBeginVisit, speechSupported, micSta
     groupRef.current.quaternion.copy(camera.quaternion)
   })
 
-  // ── Steps 0–2: message panel ──────────────────────────────────────
-  if (step <= 2) {
+  // ── Steps 0–3: message panel ──────────────────────────────────────
+  if (step <= 3) {
     const { heading, body, cta } = STEPS[step]
-    const bodyY = heading ? 0.018 : 0.055
+    const isConsent = step === 3
+    const bodyY = heading ? (isConsent ? 0.04 : 0.018) : 0.055
+    const bodyFontSize = isConsent ? 0.017 : 0.021
+    const panelHeight = isConsent ? 0.48 : 0.36
+    const panelY = isConsent ? 0.03 : 0.02
 
     return (
       <group ref={groupRef}>
-        <mesh position={[0, 0.02, -0.002]}>
-          <planeGeometry args={[0.54, 0.36]} />
+        <mesh position={[0, panelY, -0.002]}>
+          <planeGeometry args={[0.54, panelHeight]} />
           <meshBasicMaterial color={panelDark} transparent opacity={0.72} />
         </mesh>
 
         {heading && (
           <Text
-            position={[0, 0.13, 0]}
+            position={[0, panelY + (panelHeight / 2) - 0.04, 0]}
             anchorX="center"
             anchorY="middle"
-            fontSize={0.034}
-            color="#cfe8ff"
+            fontSize={isConsent ? 0.026 : 0.034}
+            color={isConsent ? '#f3c96b' : '#cfe8ff'}
           >
             {heading}
           </Text>
@@ -120,27 +78,27 @@ function OnboardingHUD({ step, onContinue, onBeginVisit, speechSupported, micSta
         <Text
           position={[0, bodyY, 0]}
           anchorX="center"
-          anchorY="middle"
-          fontSize={0.021}
+          anchorY="top"
+          fontSize={bodyFontSize}
           maxWidth={0.47}
-          textAlign="center"
-          lineHeight={1.45}
-          color="#f3f8ff"
+          textAlign={isConsent ? 'left' : 'center'}
+          lineHeight={1.5}
+          color={isConsent ? '#ddeeff' : '#f3f8ff'}
         >
           {body}
         </Text>
 
-        {/* Continue button */}
+        {/* Continue / Accept button */}
         <mesh
-          position={[0, -0.128, 0]}
+          position={[0, panelY - (panelHeight / 2) + 0.04, 0]}
           onClick={onContinue}
           onPointerOver={() => setHovering(true)}
           onPointerOut={() => setHovering(false)}
         >
-          <planeGeometry args={[0.19, 0.05]} />
-          <meshBasicMaterial color={hovering ? btnHover : btnDefault} transparent opacity={0.9} />
+          <planeGeometry args={[isConsent ? 0.28 : 0.19, 0.05]} />
+          <meshBasicMaterial color={isConsent ? (hovering ? '#0d7a4e' : '#0b5c3a') : (hovering ? btnHover : btnDefault)} transparent opacity={0.9} />
         </mesh>
-        <Text position={[0, -0.128, 0.002]} anchorX="center" anchorY="middle" fontSize={0.021} color="#ffffff">
+        <Text position={[0, panelY - (panelHeight / 2) + 0.04, 0.002]} anchorX="center" anchorY="middle" fontSize={0.021} color={isConsent ? '#a8f5d0' : '#ffffff'}>
           {cta}
         </Text>
       </group>
@@ -203,9 +161,33 @@ function OnboardingHUD({ step, onContinue, onBeginVisit, speechSupported, micSta
         {lastHeardCommand ? `Last heard: ${lastHeardCommand}` : 'Last heard: --'}
       </Text>
 
+      <Text
+        position={[-0.14, -0.274, 0]}
+        anchorX="center"
+        anchorY="middle"
+        fontSize={0.012}
+        color="#3a7aaa"
+        maxWidth={0.31}
+        textAlign="center"
+      >
+        {speechProviderLabel ? `Dictation provider: ${speechProviderLabel}` : 'Dictation provider: --'}
+      </Text>
+
+      <Text
+        position={[-0.14, -0.296, 0]}
+        anchorX="center"
+        anchorY="middle"
+        fontSize={0.012}
+        color="#3a7aaa"
+        maxWidth={0.31}
+        textAlign="center"
+      >
+        {budgetStatus ? `Budget: ${budgetStatus}` : 'Budget: --'}
+      </Text>
+
       {/* Manual Begin Visit fallback button */}
       <mesh
-        position={[-0.14, -0.292, 0]}
+        position={[-0.14, -0.334, 0]}
         onClick={onBeginVisit}
         onPointerOver={() => setHoverBegin(true)}
         onPointerOut={() => setHoverBegin(false)}
@@ -213,7 +195,7 @@ function OnboardingHUD({ step, onContinue, onBeginVisit, speechSupported, micSta
         <planeGeometry args={[0.22, 0.04]} />
         <meshBasicMaterial color={hoverBegin ? btnGreenHover : btnGreen} transparent opacity={0.88} />
       </mesh>
-      <Text position={[-0.14, -0.292, 0.002]} anchorX="center" anchorY="middle" fontSize={0.017} color="#a8f5d0">
+      <Text position={[-0.14, -0.334, 0.002]} anchorX="center" anchorY="middle" fontSize={0.017} color="#a8f5d0">
         TAP TO BEGIN VISIT
       </Text>
 
@@ -223,7 +205,13 @@ function OnboardingHUD({ step, onContinue, onBeginVisit, speechSupported, micSta
         <meshBasicMaterial color="#050f18" transparent opacity={0.55} />
       </mesh>
 
-      <PatientSilhouette x={0.26} y={0.06} s={1.3} />
+      <Image
+        url={seatedOutlineUrl}
+        position={[0.26, 0.06, 0]}
+        scale={[0.135, 0.26, 1]}
+        transparent
+        opacity={0.9}
+      />
 
       <Text
         position={[0.26, -0.215, 0]}
