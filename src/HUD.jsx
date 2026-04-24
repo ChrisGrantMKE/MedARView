@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { Text } from '@react-three/drei'
 import { Color, Vector3 } from 'three'
@@ -8,16 +8,36 @@ const panelColor = new Color('#091522')
 const endDefault = new Color('#5c0f1a')
 const endHover = new Color('#8f1527')
 
-function HUD({ vitals, conversation, activeSpeaker, onEndSimulation, patient, micStatus, speechSupported, lastHeardCommand, speakerAttributionStatus, speechProviderLabel, budgetStatus }) {
+function HUD({ vitals, conversation, activeSpeaker, onEndSimulation, patient, micStatus, speechSupported, lastHeardCommand, patientLiveCaption, speakerAttributionStatus, speechProviderLabel, budgetStatus }) {
   const groupRef = useRef(null)
+  const tickerTextRef = useRef(null)
+  const tickerOffsetRef = useRef(0.29)
   const { camera } = useThree()
   const [hoverEnd, setHoverEnd] = useState(false)
 
-  useFrame(() => {
+  useEffect(() => {
+    tickerOffsetRef.current = 0.29
+  }, [patientLiveCaption])
+
+  useFrame((_, delta) => {
     if (!groupRef.current) return
     const worldOffset = cameraOffset.clone().applyQuaternion(camera.quaternion)
     groupRef.current.position.copy(camera.position).add(worldOffset)
     groupRef.current.quaternion.copy(camera.quaternion)
+
+    if (!tickerTextRef.current) return
+
+    const caption = patientLiveCaption || ''
+    const estimatedTextWidth = Math.max(0.16, caption.length * 0.009)
+    const resetX = 0.29
+    const minX = -0.29 - estimatedTextWidth
+
+    tickerOffsetRef.current -= delta * 0.18
+    if (tickerOffsetRef.current < minX) {
+      tickerOffsetRef.current = resetX
+    }
+
+    tickerTextRef.current.position.x = tickerOffsetRef.current
   })
 
   const summaryText = useMemo(() => [
@@ -31,6 +51,29 @@ function HUD({ vitals, conversation, activeSpeaker, onEndSimulation, patient, mi
 
   return (
     <group ref={groupRef}>
+
+      {/* ─── PATIENT LIVE TICKER ─── */}
+      <group position={[0, 0.245, 0]}>
+        <mesh position={[0, 0, -0.002]}>
+          <planeGeometry args={[0.56, 0.062]} />
+          <meshBasicMaterial color={panelColor} transparent opacity={0.7} />
+        </mesh>
+        <Text position={[-0.255, 0, 0]} anchorX="left" anchorY="middle" fontSize={0.016} color="#f3c96b">
+          PATIENT LIVE
+        </Text>
+        <Text
+          ref={tickerTextRef}
+          position={[0.29, 0, 0]}
+          anchorX="left"
+          anchorY="middle"
+          fontSize={0.017}
+          color="#fff6de"
+          maxWidth={1.2}
+          textAlign="left"
+        >
+          {patientLiveCaption || 'Awaiting patient speech...'}
+        </Text>
+      </group>
 
       {/* ─── LIVE VITALS ─── */}
       <group position={[0, 0.1, 0]}>

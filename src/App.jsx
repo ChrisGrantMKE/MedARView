@@ -37,6 +37,7 @@ function App() {
   const [micPermission, setMicPermission] = useState('unknown')
   const [micStatus, setMicStatus] = useState('idle')
   const [lastHeardCommand, setLastHeardCommand] = useState('')
+  const [patientLiveCaption, setPatientLiveCaption] = useState('Awaiting patient speech...')
   const [speakerAttributionStatus, setSpeakerAttributionStatus] = useState('Awaiting speech...')
   const [budgetSnapshot, setBudgetSnapshot] = useState(() => getSpeechBudgetSnapshot())
   const [arSupport, setArSupport] = useState({
@@ -120,6 +121,7 @@ function App() {
       setMicPermission('n/a')
       setMicStatus('disabled')
       setLastHeardCommand('Dictation disabled by config.')
+      setPatientLiveCaption('Dictation disabled.')
       setSpeakerAttributionStatus('Dictation disabled by config.')
       return
     }
@@ -206,6 +208,10 @@ function App() {
               timestamp: Date.now(),
             },
           ])
+
+          if (attribution.speaker === 'Patient') {
+            setPatientLiveCaption(utterance)
+          }
         })()
       }
     }
@@ -253,6 +259,7 @@ function App() {
     if (!dictationEnabled) {
       sessionStartRef.current = Date.now()
       sessionBudgetStartRef.current = null
+      setPatientLiveCaption('Awaiting patient speech...')
       setPhase('active')
       return
     }
@@ -264,6 +271,7 @@ function App() {
 
     sessionStartRef.current = Date.now()
     sessionBudgetStartRef.current = Date.now()
+    setPatientLiveCaption('Awaiting patient speech...')
     setPhase('active')
   }
 
@@ -325,6 +333,7 @@ function App() {
                 micStatus={micStatus}
                 speechSupported={speechSupported}
                 lastHeardCommand={lastHeardCommand}
+                patientLiveCaption={patientLiveCaption}
                 speakerAttributionStatus={speakerAttributionStatus}
                 speechProviderLabel={speechProviderLabel}
                 budgetStatus={budgetStatus}

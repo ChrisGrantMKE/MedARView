@@ -5,24 +5,33 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "certs:generate": "npx mkcert create-ca --key certs/ca.key --cert certs/ca.crt && npx mkcert create-cert --ca-key certs/ca.key --ca-cert certs/ca.crt --key certs/lan.key --cert certs/lan.crt --domains localhost 127.0.0.1 192.168.50.108",
     "dev:ui-only": "cross-env VITE_ENABLE_DICTATION=false VITE_ENABLE_EXTERNAL_DICTATION=false vite",
     "dev:full-dictation": "cross-env VITE_ENABLE_DICTATION=true VITE_ENABLE_EXTERNAL_DICTATION=true vite",
+    "dev:https:ui-only": "cross-env VITE_DEV_HTTPS=true VITE_ENABLE_DICTATION=false VITE_ENABLE_EXTERNAL_DICTATION=false vite",
+    "dev:https:full-dictation": "cross-env VITE_DEV_HTTPS=true VITE_ENABLE_DICTATION=true VITE_ENABLE_EXTERNAL_DICTATION=true vite",
     "gateway:ui-only": "cross-env MEDARVIEW_ENABLE_GOOGLE_SPEECH=false node server/speechGateway.mjs",
     "gateway:full-dictation": "cross-env MEDARVIEW_ENABLE_GOOGLE_SPEECH=true node server/speechGateway.mjs",
     "stack:ui-only": "concurrently \"npm run dev:ui-only\" \"npm run gateway:ui-only\"",
     "stack:full-dictation": "concurrently \"npm run dev:full-dictation\" \"npm run gateway:full-dictation\"",
+    "stack:https:ui-only": "concurrently \"npm run dev:https:ui-only\" \"npm run gateway:ui-only\"",
+    "stack:https:full-dictation": "concurrently \"npm run dev:https:full-dictation\" \"npm run gateway:full-dictation\"",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "speech:gateway": "node server/speechGateway.mjs"
   },
   "dependencies": {
+    "@google-cloud/speech": "^7.3.0",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.0",
     "@react-three/xr": "^6.6.29",
+    "express": "^5.2.1",
+    "fluent-ffmpeg": "^2.1.3",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
-    "three": "^0.184.0"
+    "three": "^0.184.0",
+    "ws": "^8.20.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",

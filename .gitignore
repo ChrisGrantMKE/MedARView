@@ -22,3 +22,5 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+certs/
+certs/medical-xr-dictation-55698c95e9c9.json

@@ -1,7 +1,11 @@
 import { createServer } from 'node:http'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { PassThrough } from 'node:stream'
 import { fileURLToPath } from 'node:url'
+import ffmpeg from 'fluent-ffmpeg'
+import speech from '@google-cloud/speech'
+import { WebSocketServer } from 'ws'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -14,6 +18,13 @@ const budgetMinutes = Number(process.env.MEDARVIEW_SPEECH_BUDGET_MINUTES || 60)
 const budgetWindowDays = Number(process.env.MEDARVIEW_SPEECH_BUDGET_WINDOW_DAYS || 30)
 const provider = process.env.MEDARVIEW_DICTATION_PROVIDER || 'google-medical-proxy'
 const googleSpeechEnabled = String(process.env.MEDARVIEW_ENABLE_GOOGLE_SPEECH || 'false').toLowerCase() === 'true'
+const googleRecognizerPath = process.env.MEDARVIEW_GOOGLE_RECOGNIZER || ''
+const sttWsPath = process.env.MEDARVIEW_SPEECH_WS_PATH || '/ws/stt'
+const sttLanguageCode = process.env.MEDARVIEW_SPEECH_LANGUAGE || 'en-US'
+const sttModel = process.env.MEDARVIEW_GOOGLE_MODEL || 'latest_long'
+
+const { SpeechClient: SpeechClientV2 } = speech.v2
+const speechClient = googleSpeechEnabled ? new SpeechClientV2() : null
 
 function json(res, status, payload) {
   res.writeHead(status, {
@@ -164,6 +175,164 @@ async function readBody(req) {
   return JSON.parse(Buffer.concat(chunks).toString('utf8'))
 }
 
+function sendWsJson(ws, payload) {
+  if (ws.readyState === ws.OPEN) {
+    ws.send(JSON.stringify(payload))
+  }
+}
+
+function closeQuietly(stream) {
+  if (!stream) return
+  try {
+    stream.end()
+  } catch (_) {
+    // Ignore cleanup errors on stream shutdown.
+  }
+}
+
+function createGoogleStreamingSession(ws) {
+  if (!speechClient) {
+    return null
+  }
+
+  const stream = speechClient
+    .streamingRecognize()
+    .on('error', (error) => {
+      sendWsJson(ws, {
+        type: 'error',
+        message: error?.message || 'Google streaming recognition error.',
+      })
+    })
+    .on('data', (data) => {
+      const result = data?.results?.[0]
+      const alternative = result?.alternatives?.[0]
+
+      if (!alternative?.transcript) {
+        return
+      }
+
+      const words = Array.isArray(alternative.words) ? alternative.words : []
+      const lastWord = words[words.length - 1]
+      const speaker = lastWord?.speakerLabel || (Number.isFinite(lastWord?.speakerTag) ? String(lastWord.speakerTag) : 'Unknown')
+
+      sendWsJson(ws, {
+        type: 'transcript',
+        text: alternative.transcript,
+        isFinal: Boolean(result?.isFinal),
+        speaker,
+        confidence: typeof alternative.confidence === 'number' ? alternative.confidence : null,
+      })
+    })
+
+  stream.write({
+    recognizer: googleRecognizerPath,
+    streamingConfig: {
+      config: {
+        explicitDecodingConfig: {
+          encoding: 'LINEAR16',
+          sampleRateHertz: 16000,
+          audioChannelCount: 1,
+        },
+        languageCodes: [sttLanguageCode],
+        model: sttModel,
+        features: {
+          enableAutomaticPunctuation: true,
+          diarizationConfig: {
+            minSpeakerCount: 2,
+            maxSpeakerCount: 2,
+          },
+        },
+      },
+      streamingFeatures: {
+        interimResults: true,
+      },
+    },
+  })
+
+  return stream
+}
+
+function bindRealtimeSttConnection(ws) {
+  if (!googleSpeechEnabled) {
+    sendWsJson(ws, {
+      type: 'error',
+      message: 'Google speech integration is disabled by server config.',
+    })
+    ws.close(1011, 'Google speech disabled')
+    return
+  }
+
+  if (!googleRecognizerPath) {
+    sendWsJson(ws, {
+      type: 'error',
+      message: 'MEDARVIEW_GOOGLE_RECOGNIZER is not configured.',
+    })
+    ws.close(1011, 'Recognizer not configured')
+    return
+  }
+
+  const audioInputStream = new PassThrough()
+  const audioOutputStream = new PassThrough()
+  const recognizeStream = createGoogleStreamingSession(ws)
+
+  ffmpeg(audioInputStream)
+    .inputFormat('webm')
+    .audioCodec('pcm_s16le')
+    .audioFrequency(16000)
+    .audioChannels(1)
+    .format('s16le')
+    .on('error', (err) => {
+      if (String(err?.message || '').includes('Premature close')) {
+        return
+      }
+
+      sendWsJson(ws, {
+        type: 'error',
+        message: `FFmpeg processing error: ${err?.message || 'unknown error'}`,
+      })
+    })
+    .pipe(audioOutputStream)
+
+  const onAudio = (chunk) => {
+    if (recognizeStream && !recognizeStream.destroyed) {
+      recognizeStream.write({ audio: chunk })
+    }
+  }
+
+  audioOutputStream.on('data', onAudio)
+
+  sendWsJson(ws, {
+    type: 'ready',
+    path: sttWsPath,
+    recognizerConfigured: true,
+    model: sttModel,
+    languageCode: sttLanguageCode,
+  })
+
+  ws.on('message', (message, isBinary) => {
+    if (!isBinary) {
+      return
+    }
+
+    const chunk = Buffer.isBuffer(message) ? message : Buffer.from(message)
+    audioInputStream.write(chunk)
+  })
+
+  ws.on('close', () => {
+    audioOutputStream.off('data', onAudio)
+    closeQuietly(audioInputStream)
+    closeQuietly(audioOutputStream)
+    closeQuietly(recognizeStream)
+  })
+
+  ws.on('error', () => {
+    audioOutputStream.off('data', onAudio)
+    closeQuietly(audioInputStream)
+    closeQuietly(audioOutputStream)
+    closeQuietly(recognizeStream)
+  })
+}
+
 const server = createServer(async (req, res) => {
   if (req.method === 'OPTIONS') {
     json(res, 204, {})
@@ -175,8 +344,10 @@ const server = createServer(async (req, res) => {
       ok: true,
       provider,
       googleSpeechEnabled,
+      googleRecognizerConfigured: Boolean(googleRecognizerPath),
       googleCredentialsConfigured: Boolean(process.env.GOOGLE_APPLICATION_CREDENTIALS),
-      note: 'Budget-aware local speech gateway scaffold for MedARView test environments.',
+      sttWebSocketPath: sttWsPath,
+      note: 'Budget-aware local speech gateway with optional Google Speech v2 real-time WebSocket streaming.',
     })
     return
   }
@@ -283,13 +454,46 @@ const server = createServer(async (req, res) => {
     }
 
     json(res, 501, {
-      error: 'Streaming transcription proxy not implemented yet.',
-      nextStep: 'Wire this gateway to Google Cloud Speech-to-Text medical_conversation streaming and return speaker-labeled transcript segments.',
+      error: 'HTTP diarize endpoint is not implemented for audio streams.',
+      nextStep: `Use the WebSocket endpoint at ${sttWsPath} for real-time transcription streaming.`,
     })
     return
   }
 
   json(res, 404, { error: 'Not found.' })
+})
+
+const wss = new WebSocketServer({ noServer: true })
+
+wss.on('connection', (ws) => {
+  bindRealtimeSttConnection(ws)
+})
+
+server.on('upgrade', (req, socket, head) => {
+  const host = req.headers.host || `localhost:${port}`
+  const url = new URL(req.url || '/', `http://${host}`)
+
+  if (url.pathname !== sttWsPath) {
+    socket.write('HTTP/1.1 404 Not Found\r\n\r\n')
+    socket.destroy()
+    return
+  }
+
+  if (!googleSpeechEnabled) {
+    socket.write('HTTP/1.1 503 Service Unavailable\r\n\r\n')
+    socket.destroy()
+    return
+  }
+
+  if (!googleRecognizerPath) {
+    socket.write('HTTP/1.1 500 Internal Server Error\r\n\r\n')
+    socket.destroy()
+    return
+  }
+
+  wss.handleUpgrade(req, socket, head, (ws) => {
+    wss.emit('connection', ws, req)
+  })
 })
 
 server.listen(port, () => {

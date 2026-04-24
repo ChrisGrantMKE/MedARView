@@ -1,4 +1,4 @@
-Run one command by mode: `npm run stack:ui-only` for UI-only testing, or `npm run stack:full-dictation` for full dictation + gateway.
+Run one command by mode: npm run stack:https:ui-only for HTTPS UI-only LAN testing, or npm run stack:https:full-dictation for HTTPS full dictation + gateway.
 
 # MedARView
 
