@@ -5,6 +5,11 @@
   overflow: hidden;
 }
 
+/* Simulated (non-WebXR) HUD: white letterboxing / shell behind canvas */
+.app-shell--simulated {
+  background: #ffffff;
+}
+
 .ar-controls {
   position: absolute;
   top: 1rem;

@@ -1,68 +1,65 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
-import { Text, useTexture, Line } from '@react-three/drei'
+import { Text, Line } from '@react-three/drei'
 import { Color, Vector3 } from 'three'
 
-import patientIconURL from './assets/UI IMAGES/Patient data.png'
-import bloodPressureIconURL from './assets/UI IMAGES/BloodpressureO2.png'
-import heartRateIconURL from './assets/UI IMAGES/Heartrate.png'
-import testResultsIconURL from './assets/UI IMAGES/Testresults.png'
-import allergiesIconURL from './assets/UI IMAGES/Allergies.png'
-import menuHeaderIconURL from './assets/UI IMAGES/Menu.png'
+import HudMenuPanel from './hud/HudMenuPanel'
 
 const cameraOffset = new Vector3(-0.28, 0.18, -0.65)
 const panelColor = new Color('#091522')
-const detailPanelColor = new Color('#0e1a2e')
-const endDefault = new Color('#5c0f1a')
-const endHover = new Color('#8f1527')
 
-function HUD({ vitals, conversation, activeSpeaker, onEndSimulation, patient, micStatus, speechSupported, lastHeardCommand, patientLiveCaption, speakerAttributionStatus, speechProviderLabel, budgetStatus }) {
+/** Match SimulatedHUD: top-right patient live chip (half prior width). */
+const PATIENT_LIVE_W = 0.72 * 0.5
+const PATIENT_LIVE_H = 0.1
+const PATIENT_LIVE_INSET_X = 0.02
+const PATIENT_LIVE_INSET_Y = 0.02
+
+function HUD({ conversation, activeSpeaker, onEndSimulation, patient, micStatus, speechSupported, lastHeardCommand, patientLiveCaption, speakerAttributionStatus, speechProviderLabel, budgetStatus }) {
   const groupRef = useRef(null)
-  const tickerTextRef = useRef(null)
-  const tickerOffsetRef = useRef(0.29)
   const subtitleTextRef = useRef(null)
   const subtitleOffsetRef = useRef(0.29)
   const { camera } = useThree()
   const [hoverEnd, setHoverEnd] = useState(false)
   const [selectedMenuId, setSelectedMenuId] = useState(null)
   const [overlayEnabled, setOverlayEnabled] = useState(true)
-  const [touchStartX, setTouchStartX] = useState(null)
-  const [dragging, setDragging] = useState(false)
+  const menuLayout = useMemo(() => {
+    const depth = Math.abs(cameraOffset.z)
+    const fovRad = (camera.fov * Math.PI) / 180
+    const visibleHeight = 2 * Math.tan(fovRad / 2) * depth
+    const visibleWidth = visibleHeight * camera.aspect
+    const baseWidth = 0.3
+    const minWidth = 0.15
+    const quarterViewport = visibleWidth * 0.25
+    const easedWidth =
+      quarterViewport >= baseWidth
+        ? baseWidth
+        : Math.max(minWidth, baseWidth - (baseWidth - quarterViewport) * 0.5)
+    const scale = easedWidth / baseWidth
+    const leftPadding = 0.02
+    const topPadding = 0.06
+    const xLeft = -visibleWidth / 2 + leftPadding
+    const yTop = visibleHeight / 2 - topPadding
+    return {
+      scale,
+      position: [xLeft + (baseWidth * scale) / 2, yTop - 0.225 * scale, 0],
+    }
+  }, [camera.aspect, camera.fov])
 
-  const textures = useTexture([
-    patientIconURL,
-    bloodPressureIconURL,
-    heartRateIconURL,
-    testResultsIconURL,
-    allergiesIconURL,
-    menuHeaderIconURL,
-  ])
-
-  useEffect(() => {
-    tickerOffsetRef.current = 0.29
-  }, [patientLiveCaption])
-
+  const patientLivePosition = useMemo(() => {
+    const depth = Math.abs(cameraOffset.z)
+    const fovRad = (camera.fov * Math.PI) / 180
+    const visibleHeight = 2 * Math.tan(fovRad / 2) * depth
+    const visibleWidth = visibleHeight * camera.aspect
+    const x = visibleWidth / 2 - PATIENT_LIVE_W / 2 - PATIENT_LIVE_INSET_X
+    const y = visibleHeight / 2 - PATIENT_LIVE_H / 2 - PATIENT_LIVE_INSET_Y
+    return [x, y, 0]
+  }, [camera.aspect, camera.fov])
   useFrame((_, delta) => {
     if (!groupRef.current) return
     const worldOffset = cameraOffset.clone().applyQuaternion(camera.quaternion)
     groupRef.current.position.copy(camera.position).add(worldOffset)
     groupRef.current.quaternion.copy(camera.quaternion)
 
-    if (!tickerTextRef.current) return
-
-    const caption = patientLiveCaption || ''
-    const estimatedTextWidth = Math.max(0.16, caption.length * 0.009)
-    const resetX = 0.29
-    const minX = -0.29 - estimatedTextWidth
-
-    tickerOffsetRef.current -= delta * 0.18
-    if (tickerOffsetRef.current < minX) {
-      tickerOffsetRef.current = resetX
-    }
-
-    tickerTextRef.current.position.x = tickerOffsetRef.current
-
-    // Scrolling subtitle bar
     if (!subtitleTextRef.current) return
 
     const subtitleCaption = patientLiveCaption || ''
@@ -78,45 +75,6 @@ function HUD({ vitals, conversation, activeSpeaker, onEndSimulation, patient, mi
     subtitleTextRef.current.position.x = subtitleOffsetRef.current
   })
 
-  const menuItems = useMemo(() => [
-    {
-      id: 'patient',
-      label: 'Patient data',
-      subtitle: 'Last updated 02/14/26',
-      icon: textures[0],
-      body: 'Reyan Verol • 74 yrs • M • DOB: 01/10/1944. GP visit 10:30 AM. Active meds: Metformin 500 mg, Lisinopril 10 mg, Aspirin 81 mg. Follow-up in 8 weeks.',
-    },
-    {
-      id: 'blood',
-      label: 'Blood pressure',
-      subtitle: '118 / 76 mmHg • 2h ago',
-      icon: textures[1],
-      body: 'Systolic/Diastolic recorded at 118/76. Trend is stable within target range. Continue current antihypertensive protocol and monitor for orthostatic changes.',
-    },
-    {
-      id: 'heart',
-      label: 'Heart rate',
-      subtitle: '94 bpm • live',
-      icon: textures[2],
-      body: 'Resting heart rate at 94 bpm. Slightly elevated for baseline but within acceptable range for current medication regimen. Watch for >100 bpm.',
-    },
-    {
-      id: 'tests',
-      label: 'Test results',
-      subtitle: '3 of 5 in range • 24 Apr',
-      icon: textures[3],
-      body: 'Glucose 120 mg/dL • Cholesterol 198 mg/dL • HBA1c 7.1% • Hemoglobin 11.8 g/dL • eGFR 82 mL/min. Two values remain flagged for follow-up.',
-    },
-    {
-      id: 'allergies',
-      label: 'Allergies',
-      subtitle: '3 documented',
-      icon: textures[4],
-      body: 'Penicillin: hives and lip swelling. Latex: contact dermatitis and wheezing. No known food allergies documented. Avoid related beta-lactams.',
-    },
-  ], [textures])
-
-  const selectedMenu = menuItems.find(item => item.id === selectedMenuId)
   const recentConvo = conversation.slice(-3)
   const summaryText = useMemo(
     () => [
@@ -128,274 +86,164 @@ function HUD({ vitals, conversation, activeSpeaker, onEndSimulation, patient, mi
     [patient]
   )
 
-  const handlePointerDown = (event) => {
-    setTouchStartX(event.point.x)
-    setDragging(true)
-  }
-
-  const handlePointerUp = (event) => {
-    if (!dragging || touchStartX === null) {
-      setDragging(false)
-      return
-    }
-    const deltaX = event.point.x - touchStartX
-    setDragging(false)
-    setTouchStartX(null)
-
-    if (selectedMenuId && deltaX < -0.08) {
-      setSelectedMenuId(null)
-    }
-  }
-
-  const handleMenuSelect = (id) => {
-    setSelectedMenuId(id)
-  }
-
   return (
     <group ref={groupRef}>
-      {/* ─── MENU PANEL ─── */}
-      <group position={[-0.28, 0.12, 0]}>
-        <mesh
-          position={[0, 0, -0.002]}
-          onPointerDown={handlePointerDown}
-          onPointerUp={handlePointerUp}
-        >
-          <planeGeometry args={[0.30, 0.44]} />
-          <meshBasicMaterial color={panelColor} transparent opacity={0.58} />
-        </mesh>
+      <HudMenuPanel
+        position={menuLayout.position}
+        scale={menuLayout.scale}
+        overlayEnabled={overlayEnabled}
+        onToggleOverlay={() => setOverlayEnabled((prev) => !prev)}
+        selectedMenuId={selectedMenuId}
+        onToggleItem={(id) => setSelectedMenuId((prev) => (prev === id ? null : id))}
+        detailHint="Swipe left on the menu panel to close detail"
+      />
 
-        <mesh position={[-0.11, 0.18, 0.001]}>
-          <planeGeometry args={[0.095, 0.095]} />
-          <meshBasicMaterial map={textures[5]} transparent opacity={0.92} />
-        </mesh>
-        <Text position={[-0.02, 0.18, 0.002]} anchorX="left" anchorY="middle" fontSize={0.026} color="#e8f4ff" maxWidth={0.18}>
-          MENU
-        </Text>
-
-        <Text position={[-0.135, 0.125, 0.002]} anchorX="left" anchorY="middle" fontSize={0.013} color="#8fc8ff" maxWidth={0.24}>
-          {overlayEnabled ? 'Overlay: On' : 'Overlay: Off'}
-        </Text>
-        <mesh position={[0.13, 0.12, 0.001]} onClick={() => setOverlayEnabled((prev) => !prev)}>
-          <planeGeometry args={[0.08, 0.038]} />
-          <meshBasicMaterial color={overlayEnabled ? '#7d9cff' : '#23334d'} transparent opacity={0.86} />
-        </mesh>
-        <Text position={[0.13, 0.12, 0.003]} anchorX="center" anchorY="middle" fontSize={0.013} color="#f3f7fc">
-          {overlayEnabled ? 'On' : 'Off'}
-        </Text>
-
-        {menuItems.map((item, index) => {
-          const y = 0.05 - index * 0.068
-          const selected = item.id === selectedMenuId
-          return (
-            <group key={item.id} position={[0, y, 0.002]}>
-              <mesh
-                position={[0, 0, 0]}
-                onClick={() => handleMenuSelect(item.id)}
-              >
-                <planeGeometry args={[0.27, 0.055]} />
-                <meshBasicMaterial color={selected ? '#1d3f63' : '#0e1a2e'} transparent opacity={0.88} />
-              </mesh>
-              <mesh position={[-0.12, 0, 0.003]}>
-                <planeGeometry args={[0.042, 0.042]} />
-                <meshBasicMaterial map={item.icon} transparent opacity={1} />
-              </mesh>
-              <Text position={[-0.06, 0.01, 0.003]} anchorX="left" anchorY="middle" fontSize={0.017} color="#f3f7fc">
-                {item.label}
-              </Text>
-              <Text position={[-0.06, -0.013, 0.003]} anchorX="left" anchorY="middle" fontSize={0.011} color="#8fc8ff" maxWidth={0.16}>
-                {item.subtitle}
-              </Text>
-              <Text position={[0.115, 0, 0.003]} anchorX="right" anchorY="middle" fontSize={0.017} color="#8fc8ff">
-                {'›'}
-              </Text>
-            </group>
-          )
-        })}
-
-        {selectedMenu && (
-          <group position={[0, -0.22, 0.002]}>
-            <mesh position={[0, 0, 0]}>
-              <planeGeometry args={[0.27, 0.16]} />
-              <meshBasicMaterial color={detailPanelColor} transparent opacity={0.88} />
+      {overlayEnabled && (
+        <>
+          {/* ─── PATIENT LIVE (same chip layout as SimulatedHUD; WebXR uses live mic status) ─── */}
+          <group position={patientLivePosition}>
+            <mesh position={[0, 0, -0.002]}>
+              <planeGeometry args={[PATIENT_LIVE_W, PATIENT_LIVE_H]} />
+              <meshBasicMaterial color={panelColor} transparent opacity={0.72} depthWrite={false} />
             </mesh>
-            <Text position={[-0.125, 0.055, 0.001]} anchorX="left" anchorY="middle" fontSize={0.018} color="#cfe8ff">
-              {selectedMenu.label}
+            <Text position={[-PATIENT_LIVE_W / 2 + 0.01, 0.028, 0]} anchorX="left" anchorY="middle" fontSize={0.013} color="#f3c96b">
+              PATIENT LIVE
+            </Text>
+            <Text position={[-PATIENT_LIVE_W / 2 + 0.01, 0.004, 0]} anchorX="left" anchorY="middle" fontSize={0.01} color="#9dbfe8">
+              {`Mic: ${speechSupported ? micStatus : 'unsupported'}`}
             </Text>
             <Text
-              position={[-0.125, 0.025, 0.001]}
+              position={[-PATIENT_LIVE_W / 2 + 0.01, -0.024, 0]}
               anchorX="left"
               anchorY="top"
-              fontSize={0.013}
-              maxWidth={0.245}
-              lineHeight={1.35}
+              fontSize={0.014}
+              color="#fff6de"
+              maxWidth={0.32}
               textAlign="left"
-              color="#dce8ff"
+              lineHeight={1.25}
             >
-              {selectedMenu.body}
-            </Text>
-            <Text position={[0, -0.067, 0.001]} anchorX="center" anchorY="middle" fontSize={0.01} color="#89c4ff">
-              Swipe left to go back
+              {patientLiveCaption || 'Awaiting patient speech...'}
             </Text>
           </group>
-        )}
-      </group>
 
-      {/* ─── PATIENT LIVE TICKER ─── */}
-      <group position={[0.16, 0.245, 0]}>
-        <mesh position={[0, 0, -0.002]}>
-          <planeGeometry args={[0.56, 0.062]} />
-          <meshBasicMaterial color={panelColor} transparent opacity={0.7} />
-        </mesh>
-        <Text position={[-0.255, 0, 0]} anchorX="left" anchorY="middle" fontSize={0.016} color="#f3c96b">
-          PATIENT LIVE
-        </Text>
-        <Text
-          ref={tickerTextRef}
-          position={[0.29, 0, 0]}
-          anchorX="left"
-          anchorY="middle"
-          fontSize={0.017}
-          color="#fff6de"
-          maxWidth={1.2}
-          textAlign="left"
-        >
-          {patientLiveCaption || 'Awaiting patient speech...'}
-        </Text>
-      </group>
+          {/* ─── CONVERSATION LOG ─── */}
+          <group position={[0.16, -0.12, 0]}>
+            <mesh position={[0, 0, -0.002]}>
+              <planeGeometry args={[0.56, 0.26]} />
+              <meshBasicMaterial color={panelColor} transparent opacity={0.58} />
+            </mesh>
+            <Text position={[-0.255, 0.096, 0]} anchorX="left" anchorY="middle" fontSize={0.022} color="#cfe8ff">
+              CONVERSATION
+            </Text>
+            <Text position={[0.255, 0.096, 0]} anchorX="right" anchorY="middle" fontSize={0.015} color="#8af3d1">
+              {`Active: ${activeSpeaker}`}
+            </Text>
+            <Text position={[0.255, 0.072, 0]} anchorX="right" anchorY="middle" fontSize={0.013} color="#6bb5ff">
+              {`Mic: ${speechSupported ? micStatus : 'unsupported'}`}
+            </Text>
+            <Text position={[0.255, 0.048, 0]} anchorX="right" anchorY="middle" fontSize={0.012} color="#4f7a9a" maxWidth={0.21} textAlign="right">
+              {speakerAttributionStatus ? `Attribution: ${speakerAttributionStatus}` : 'Attribution: --'}
+            </Text>
+            <Text position={[0.255, 0.024, 0]} anchorX="right" anchorY="middle" fontSize={0.011} color="#3f6888" maxWidth={0.21} textAlign="right">
+              {speechProviderLabel ? `Provider: ${speechProviderLabel}` : 'Provider: --'}
+            </Text>
+            <Text position={[0.255, 0.001, 0]} anchorX="right" anchorY="middle" fontSize={0.011} color="#3f6888" maxWidth={0.21} textAlign="right">
+              {budgetStatus ? `Budget: ${budgetStatus}` : 'Budget: --'}
+            </Text>
+            <Text position={[0.255, -0.022, 0]} anchorX="right" anchorY="middle" fontSize={0.011} color="#3f6888" maxWidth={0.21} textAlign="right">
+              {lastHeardCommand ? `Heard: ${lastHeardCommand}` : 'Heard: --'}
+            </Text>
+            {recentConvo.length === 0 ? (
+              <Text position={[-0.255, 0.006, 0]} anchorX="left" anchorY="middle" fontSize={0.018} color="#3a5a70">
+                Conversation will appear here...
+              </Text>
+            ) : (
+              recentConvo.map((entry, i) => {
+                const yPos = 0.03 - i * 0.052
+                const label = entry.speaker === 'Doctor' ? 'Dr' : 'Pt'
+                const labelColor = entry.speaker === 'Doctor' ? '#8af3d1' : '#f3c96b'
+                const truncated = entry.text.length > 46 ? entry.text.slice(0, 46) + '\u2026' : entry.text
+                return (
+                  <group key={entry.id}>
+                    <Text position={[-0.255, yPos, 0]} anchorX="left" anchorY="middle" fontSize={0.018} color={labelColor}>
+                      {`${label}:`}
+                    </Text>
+                    <Text position={[-0.213, yPos, 0]} anchorX="left" anchorY="middle" fontSize={0.018} color="#e8f4ff">
+                      {truncated}
+                    </Text>
+                  </group>
+                )
+              })
+            )}
+          </group>
 
-      {/* ─── LIVE VITALS ─── */}
-      <group position={[0.16, 0.1, 0]}>
-        <mesh position={[0, 0, -0.002]}>
-          <planeGeometry args={[0.56, 0.2]} />
-          <meshBasicMaterial color={panelColor} transparent opacity={0.58} />
-        </mesh>
-        <Text position={[-0.255, 0.055, 0]} anchorX="left" anchorY="middle" fontSize={0.027} color="#cfe8ff">
-          LIVE VITALS
-        </Text>
-        <Text position={[-0.255, 0.004, 0]} anchorX="left" anchorY="middle" fontSize={0.038} color="#ffffff">
-          {`BP ${vitals.systolic}/${vitals.diastolic}`}
-        </Text>
-        <Text position={[0.06, 0.004, 0]} anchorX="left" anchorY="middle" fontSize={0.038} color="#8af3d1">
-          {`SpO2 ${vitals.spo2}%`}
-        </Text>
-      </group>
+          {/* ─── PATIENT ABSTRACT ─── */}
+          <group position={[0.16, -0.39, 0]}>
+            <mesh position={[0, 0, -0.002]}>
+              <planeGeometry args={[0.56, 0.30]} />
+              <meshBasicMaterial color={panelColor} transparent opacity={0.56} />
+            </mesh>
+            <Text position={[-0.255, 0.118, 0]} anchorX="left" anchorY="middle" fontSize={0.027} color="#cfe8ff">
+              PATIENT ABSTRACT
+            </Text>
+            <Text
+              position={[-0.255, 0.028, 0]}
+              anchorX="left"
+              anchorY="top"
+              fontSize={0.02}
+              maxWidth={0.5}
+              lineHeight={1.35}
+              textAlign="left"
+              color="#f3f8ff"
+            >
+              {summaryText}
+            </Text>
+          </group>
 
-      {/* ─── CONVERSATION LOG ─── */}
-      <group position={[0.16, -0.12, 0]}>
-        <mesh position={[0, 0, -0.002]}>
-          <planeGeometry args={[0.56, 0.26]} />
-          <meshBasicMaterial color={panelColor} transparent opacity={0.58} />
-        </mesh>
-        <Text position={[-0.255, 0.096, 0]} anchorX="left" anchorY="middle" fontSize={0.022} color="#cfe8ff">
-          CONVERSATION
-        </Text>
-        <Text position={[0.255, 0.096, 0]} anchorX="right" anchorY="middle" fontSize={0.015} color="#8af3d1">
-          {`Active: ${activeSpeaker}`}
-        </Text>
-        <Text position={[0.255, 0.072, 0]} anchorX="right" anchorY="middle" fontSize={0.013} color="#6bb5ff">
-          {`Mic: ${speechSupported ? micStatus : 'unsupported'}`}
-        </Text>
-        <Text position={[0.255, 0.048, 0]} anchorX="right" anchorY="middle" fontSize={0.012} color="#4f7a9a" maxWidth={0.21} textAlign="right">
-          {speakerAttributionStatus ? `Attribution: ${speakerAttributionStatus}` : 'Attribution: --'}
-        </Text>
-        <Text position={[0.255, 0.024, 0]} anchorX="right" anchorY="middle" fontSize={0.011} color="#3f6888" maxWidth={0.21} textAlign="right">
-          {speechProviderLabel ? `Provider: ${speechProviderLabel}` : 'Provider: --'}
-        </Text>
-        <Text position={[0.255, 0.001, 0]} anchorX="right" anchorY="middle" fontSize={0.011} color="#3f6888" maxWidth={0.21} textAlign="right">
-          {budgetStatus ? `Budget: ${budgetStatus}` : 'Budget: --'}
-        </Text>
-        <Text position={[0.255, -0.022, 0]} anchorX="right" anchorY="middle" fontSize={0.011} color="#3f6888" maxWidth={0.21} textAlign="right">
-          {lastHeardCommand ? `Heard: ${lastHeardCommand}` : 'Heard: --'}
-        </Text>
-        {recentConvo.length === 0 ? (
-          <Text position={[-0.255, 0.006, 0]} anchorX="left" anchorY="middle" fontSize={0.018} color="#3a5a70">
-            Conversation will appear here...
-          </Text>
-        ) : (
-          recentConvo.map((entry, i) => {
-            const yPos = 0.03 - i * 0.052
-            const label = entry.speaker === 'Doctor' ? 'Dr' : 'Pt'
-            const labelColor = entry.speaker === 'Doctor' ? '#8af3d1' : '#f3c96b'
-            const truncated = entry.text.length > 46 ? entry.text.slice(0, 46) + '\u2026' : entry.text
-            return (
-              <group key={entry.id}>
-                <Text position={[-0.255, yPos, 0]} anchorX="left" anchorY="middle" fontSize={0.018} color={labelColor}>
-                  {`${label}:`}
-                </Text>
-                <Text position={[-0.213, yPos, 0]} anchorX="left" anchorY="middle" fontSize={0.018} color="#e8f4ff">
-                  {truncated}
-                </Text>
-              </group>
-            )
-          })
-        )}
-      </group>
+          {/* ─── END SIMULATION BUTTON ─── */}
+          <group position={[0.22, -0.62, 0]}>
+            <mesh
+              position={[0, 0, -0.002]}
+              onClick={onEndSimulation}
+              onPointerOver={() => setHoverEnd(true)}
+              onPointerOut={() => setHoverEnd(false)}
+            >
+              <planeGeometry args={[0.29, 0.058]} />
+              <meshBasicMaterial color={hoverEnd ? '#8f1527' : '#5c0f1a'} transparent opacity={0.85} />
+            </mesh>
+            <Line
+              points={[[-0.145, -0.029, 0.001], [0.145, -0.029, 0.001], [0.145, 0.029, 0.001], [-0.145, 0.029, 0.001], [-0.145, -0.029, 0.001]]}
+              color="#ff6a78"
+              lineWidth={4}
+              transparent
+              opacity={0.95}
+            />
+            <Text position={[0, 0, 0.002]} anchorX="center" anchorY="middle" fontSize={0.022} color="#ffcdd3">
+              END SIMULATION
+            </Text>
+          </group>
 
-      {/* ─── PATIENT ABSTRACT ─── */}
-      <group position={[0.16, -0.39, 0]}>
-        <mesh position={[0, 0, -0.002]}>
-          <planeGeometry args={[0.56, 0.30]} />
-          <meshBasicMaterial color={panelColor} transparent opacity={0.56} />
-        </mesh>
-        <Text position={[-0.255, 0.118, 0]} anchorX="left" anchorY="middle" fontSize={0.027} color="#cfe8ff">
-          PATIENT ABSTRACT
-        </Text>
-        <Text
-          position={[-0.255, 0.028, 0]}
-          anchorX="left"
-          anchorY="top"
-          fontSize={0.02}
-          maxWidth={0.5}
-          lineHeight={1.35}
-          textAlign="left"
-          color="#f3f8ff"
-        >
-          {summaryText}
-        </Text>
-      </group>
-
-      {/* ─── END SIMULATION BUTTON ─── */}
-      <group position={[0.22, -0.62, 0]}>
-        <mesh
-          position={[0, 0, -0.002]}
-          onClick={onEndSimulation}
-          onPointerOver={() => setHoverEnd(true)}
-          onPointerOut={() => setHoverEnd(false)}
-        >
-          <planeGeometry args={[0.29, 0.058]} />
-          <meshBasicMaterial color={hoverEnd ? '#8f1527' : '#5c0f1a'} transparent opacity={0.85} />
-        </mesh>
-        <Line
-          points={[[-0.145, -0.029, 0.001], [0.145, -0.029, 0.001], [0.145, 0.029, 0.001], [-0.145, 0.029, 0.001], [-0.145, -0.029, 0.001]]}
-          color="#ff6a78"
-          lineWidth={4}
-          transparent
-          opacity={0.95}
-        />
-        <Text position={[0, 0, 0.002]} anchorX="center" anchorY="middle" fontSize={0.022} color="#ffcdd3">
-          END SIMULATION
-        </Text>
-      </group>
-
-      {/* ─── SCROLLING PATIENT SUBTITLE BAR ─── */}
-      <group position={[0, -0.68, 0]}>
-        <mesh position={[0, 0, -0.002]}>
-          <planeGeometry args={[0.56, 0.04]} />
-          <meshBasicMaterial color={panelColor} transparent opacity={0.8} />
-        </mesh>
-        <Text
-          ref={subtitleTextRef}
-          position={[0.29, 0, 0]}
-          anchorX="left"
-          anchorY="middle"
-          fontSize={0.015}
-          color="#f3c96b"
-          maxWidth={2}
-          textAlign="left"
-        >
-          {patientLiveCaption}
-        </Text>
-      </group>
+          {/* ─── SCROLLING PATIENT SUBTITLE BAR ─── */}
+          <group position={[0, -0.68, 0]}>
+            <mesh position={[0, 0, -0.002]}>
+              <planeGeometry args={[0.56, 0.04]} />
+              <meshBasicMaterial color={panelColor} transparent opacity={0.8} />
+            </mesh>
+            <Text
+              ref={subtitleTextRef}
+              position={[0.29, 0, 0]}
+              anchorX="left"
+              anchorY="middle"
+              fontSize={0.015}
+              color="#f3c96b"
+              maxWidth={2}
+              textAlign="left"
+            >
+              {patientLiveCaption}
+            </Text>
+          </group>
+        </>
+      )}
     </group>
   )
 }

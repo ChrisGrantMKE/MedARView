@@ -302,8 +302,10 @@ function App() {
     setPhase('ended')
   }
 
+  const simulatedActiveUi = arSupport.checked && !arSupport.supported && phase === 'active'
+
   return (
-    <main className="app-shell">
+    <main className={`app-shell${simulatedActiveUi ? ' app-shell--simulated' : ''}`}>
       {phase === 'landing' && (
         <LandingPage onEnterExperience={handleEnterExperience} />
       )}
