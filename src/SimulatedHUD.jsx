@@ -1,11 +1,13 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
-import { Text, useTexture, useVideoTexture } from '@react-three/drei'
+import { Text, useVideoTexture } from '@react-three/drei'
 import { Color, Vector3 } from 'three'
 
 import HudMenuPanel from './hud/HudMenuPanel'
+import RoundedRect from './hud/RoundedRect'
 import patientVideoUrl from './assets/patient.mp4'
-import patientFallbackUrl from './assets/patient.png'
+
+const PATIENT_BG_FALLBACK = '#1e3248'
 
 const hudOffset = new Vector3(0, 0.05, -0.72)
 
@@ -21,7 +23,31 @@ const PATIENT_LIVE_H = 0.1
 const PATIENT_LIVE_INSET_X = 0.02
 const PATIENT_LIVE_INSET_Y = 0.02
 
-function SimulatedHUD({ conversation, activeSpeaker, onEndSimulation, patient, patientLiveCaption, speakerAttributionStatus, speechProviderLabel, budgetStatus }) {
+const CONV_W = 0.56
+const CONV_H = 0.26
+const END_SIM_W = 0.42 * 0.5
+const END_SIM_H = 0.068 * 0.5
+const END_SIM_FONT = 0.023 * 0.5
+const LOWER_RIGHT_INSET_X = 0.02
+/** Half prior inset — sit closer to bottom edge */
+const LOWER_EDGE_INSET_Y = 0.04 * 0.5
+const PANEL_STACK_GAP = 0.02
+
+/** Corner radius tuned for ~8px visual at typical simulated-HUD scale (world units). */
+function panelRadiusForSize(width, height, cap = 0.018) {
+  const half = Math.min(width, height) / 2
+  return Math.min(cap, Math.max(0.006, half * 0.22))
+}
+
+function SimulatedHUD({
+  conversation,
+  activeSpeaker,
+  onEndSimulation,
+  patientLiveCaption,
+  speakerAttributionStatus,
+  speechProviderLabel,
+  budgetStatus,
+}) {
   const [selectedMenuId, setSelectedMenuId] = useState(null)
   const [overlayEnabled, setOverlayEnabled] = useState(true)
   const [videoFailed, setVideoFailed] = useState(false)
@@ -40,7 +66,6 @@ function SimulatedHUD({ conversation, activeSpeaker, onEndSimulation, patient, p
       gl.setClearColor(prevClear, prevAlpha)
     }
   }, [gl, scene])
-  const textures = useTexture([patientFallbackUrl])
 
   const videoTexture = useVideoTexture(patientVideoUrl, {
     loop: true,
@@ -71,7 +96,8 @@ function SimulatedHUD({ conversation, activeSpeaker, onEndSimulation, patient, p
     const xLeft = -visibleWidth / 2 + leftPadding
     const yTop = visibleHeight / 2 - topPadding
     const panelHalfWidth = (baseWidth * scale) / 2
-    const panelTopToOrigin = 0.225 * scale
+    /* Taller left stack: rows + detail card + hint */
+    const panelTopToOrigin = 0.34 * scale
 
     return {
       scale,
@@ -79,15 +105,32 @@ function SimulatedHUD({ conversation, activeSpeaker, onEndSimulation, patient, p
     }
   }, [camera.aspect, camera.fov])
 
-  const patientLivePosition = useMemo(() => {
+  const viewBounds = useMemo(() => {
     const depth = Math.abs(hudOffset.z)
     const fovRad = (camera.fov * Math.PI) / 180
     const visibleHeight = 2 * Math.tan(fovRad / 2) * depth
     const visibleWidth = visibleHeight * camera.aspect
+    return { visibleHeight, visibleWidth }
+  }, [camera.aspect, camera.fov])
+
+  const patientLivePosition = useMemo(() => {
+    const { visibleHeight, visibleWidth } = viewBounds
     const x = visibleWidth / 2 - PATIENT_LIVE_W / 2 - PATIENT_LIVE_INSET_X
     const y = visibleHeight / 2 - PATIENT_LIVE_H / 2 - PATIENT_LIVE_INSET_Y
     return [x, y, 0]
-  }, [camera.aspect, camera.fov])
+  }, [viewBounds])
+
+  /** Conversation above end bar; right inset matches top-right live chip. */
+  const lowerRightLayout = useMemo(() => {
+    const { visibleHeight, visibleWidth } = viewBounds
+    const xRight = visibleWidth / 2 - CONV_W / 2 - LOWER_RIGHT_INSET_X
+    const yEnd = -visibleHeight / 2 + LOWER_EDGE_INSET_Y + END_SIM_H / 2
+    const yConv = yEnd + END_SIM_H / 2 + PANEL_STACK_GAP + CONV_H / 2
+    return {
+      conversation: [xRight, yConv, 0],
+      endSimulation: [0, yEnd, 0],
+    }
+  }, [viewBounds])
 
   useFrame(() => {
     if (!groupRef.current) return
@@ -97,49 +140,50 @@ function SimulatedHUD({ conversation, activeSpeaker, onEndSimulation, patient, p
   })
 
   const recentConvo = conversation.slice(-3)
-  const summaryText = useMemo(
-    () => [
-      `Patient: ${patient.name} (${patient.age})`,
-      `ID: ${patient.id}`,
-      `History: ${patient.history}`,
-      `AI Abstract: ${patient.aiAbstract}`,
-    ].join('\n'),
-    [patient]
-  )
+
+  const patientLiveR = panelRadiusForSize(PATIENT_LIVE_W, PATIENT_LIVE_H)
+  const convR = panelRadiusForSize(CONV_W, CONV_H)
+  const endSimR = panelRadiusForSize(END_SIM_W, END_SIM_H, 0.014)
 
   return (
     <group ref={groupRef}>
-      {/* Fullscreen patient background: mp4 primary, png fallback. */}
+      {/* Fullscreen patient background: video; solid color if load fails */}
       <mesh position={[0, 0, -0.028]}>
         <planeGeometry args={[PATIENT_BG_WIDTH, PATIENT_BG_HEIGHT]} />
         <meshBasicMaterial
-          map={videoFailed ? textures[0] : videoTexture}
-          color="#ffffff"
+          map={videoFailed ? null : videoTexture}
+          color={videoFailed ? PATIENT_BG_FALLBACK : '#ffffff'}
           transparent
           opacity={1}
           depthWrite={false}
         />
       </mesh>
 
-      <HudMenuPanel
-        position={menuLayout.position}
-        scale={menuLayout.scale}
-        overlayEnabled={overlayEnabled}
-        onToggleOverlay={() => setOverlayEnabled((prev) => !prev)}
-        selectedMenuId={selectedMenuId}
-        onToggleItem={(id) => setSelectedMenuId((prev) => (prev === id ? null : id))}
-        detailHint="Tap the same row again to close detail"
-      />
+      <Suspense fallback={null}>
+        <HudMenuPanel
+          position={menuLayout.position}
+          scale={menuLayout.scale}
+          overlayEnabled={overlayEnabled}
+          onSetOverlay={setOverlayEnabled}
+          selectedMenuId={selectedMenuId}
+          onToggleItem={(id) => setSelectedMenuId((prev) => (prev === id ? null : id))}
+        />
+      </Suspense>
 
-      {/* HUD Panels - right side (hidden when overlay is off) */}
-      {overlayEnabled && (
-        <>
-          {/* On top of video area: caption + simulated mic note in one panel */}
-          <group position={patientLivePosition}>
-            <mesh position={[0, 0, -0.002]}>
-              <planeGeometry args={[PATIENT_LIVE_W, PATIENT_LIVE_H]} />
-              <meshBasicMaterial color={panelColor} transparent opacity={0.72} depthWrite={false} />
-            </mesh>
+      <>
+        {/* On top of video area: caption + simulated mic note in one panel */}
+        <group position={patientLivePosition}>
+            <RoundedRect
+              width={PATIENT_LIVE_W}
+              height={PATIENT_LIVE_H}
+              radius={patientLiveR}
+              color={panelColor}
+              opacity={0.72}
+              borderColor="#5a7a9a"
+              borderOpacity={0.35}
+              borderWidth={1}
+              z={-0.002}
+            />
             <Text position={[-PATIENT_LIVE_W / 2 + 0.01, 0.028, 0]} anchorX="left" anchorY="middle" fontSize={0.013} color="#f3c96b">
               PATIENT LIVE
             </Text>
@@ -158,30 +202,37 @@ function SimulatedHUD({ conversation, activeSpeaker, onEndSimulation, patient, p
             >
               {patientLiveCaption || 'Awaiting patient speech...'}
             </Text>
-          </group>
+        </group>
 
-          <group position={[0.50, -0.38, 0]}>
-            <mesh position={[0, 0, -0.002]}>
-              <planeGeometry args={[0.56, 0.26]} />
-              <meshBasicMaterial color={panelColor} transparent opacity={0.58} />
-            </mesh>
-            <Text position={[-0.255, 0.096, 0]} anchorX="left" anchorY="middle" fontSize={0.022} color="#cfe8ff">
+        <group position={lowerRightLayout.conversation}>
+            <RoundedRect
+              width={CONV_W}
+              height={CONV_H}
+              radius={convR}
+              color={panelColor}
+              opacity={0.58}
+              borderColor="#5a7a9a"
+              borderOpacity={0.3}
+              borderWidth={1}
+              z={-0.002}
+            />
+            <Text position={[-CONV_W / 2 + 0.01, 0.096, 0]} anchorX="left" anchorY="middle" fontSize={0.022} color="#cfe8ff">
               CONVERSATION
             </Text>
-            <Text position={[0.255, 0.096, 0]} anchorX="right" anchorY="middle" fontSize={0.015} color="#8af3d1">
+            <Text position={[CONV_W / 2 - 0.01, 0.096, 0]} anchorX="right" anchorY="middle" fontSize={0.015} color="#8af3d1">
               {`Active: ${activeSpeaker}`}
             </Text>
-            <Text position={[0.255, 0.066, 0]} anchorX="right" anchorY="middle" fontSize={0.012} color="#4f7a9a" maxWidth={0.21} textAlign="right">
+            <Text position={[CONV_W / 2 - 0.01, 0.066, 0]} anchorX="right" anchorY="middle" fontSize={0.012} color="#4f7a9a" maxWidth={0.21} textAlign="right">
               {speakerAttributionStatus ? `Attribution: ${speakerAttributionStatus}` : 'Attribution: --'}
             </Text>
-            <Text position={[0.255, 0.04, 0]} anchorX="right" anchorY="middle" fontSize={0.011} color="#3f6888" maxWidth={0.21} textAlign="right">
+            <Text position={[CONV_W / 2 - 0.01, 0.04, 0]} anchorX="right" anchorY="middle" fontSize={0.011} color="#3f6888" maxWidth={0.21} textAlign="right">
               {speechProviderLabel ? `Provider: ${speechProviderLabel}` : 'Provider: --'}
             </Text>
-            <Text position={[0.255, 0.014, 0]} anchorX="right" anchorY="middle" fontSize={0.011} color="#3f6888" maxWidth={0.21} textAlign="right">
+            <Text position={[CONV_W / 2 - 0.01, 0.014, 0]} anchorX="right" anchorY="middle" fontSize={0.011} color="#3f6888" maxWidth={0.21} textAlign="right">
               {budgetStatus ? `Budget: ${budgetStatus}` : 'Budget: --'}
             </Text>
             {recentConvo.length === 0 ? (
-              <Text position={[-0.255, 0.006, 0]} anchorX="left" anchorY="middle" fontSize={0.018} color="#3a5a70">
+              <Text position={[-CONV_W / 2 + 0.01, 0.006, 0]} anchorX="left" anchorY="middle" fontSize={0.018} color="#3a5a70">
                 Conversation will appear here...
               </Text>
             ) : (
@@ -192,51 +243,39 @@ function SimulatedHUD({ conversation, activeSpeaker, onEndSimulation, patient, p
                 const truncated = entry.text.length > 46 ? entry.text.slice(0, 46) + '\u2026' : entry.text
                 return (
                   <group key={entry.id}>
-                    <Text position={[-0.255, yPos, 0]} anchorX="left" anchorY="middle" fontSize={0.018} color={labelColor}>
+                    <Text position={[-CONV_W / 2 + 0.01, yPos, 0]} anchorX="left" anchorY="middle" fontSize={0.018} color={labelColor}>
                       {`${label}:`}
                     </Text>
-                    <Text position={[-0.213, yPos, 0]} anchorX="left" anchorY="middle" fontSize={0.018} color="#e8f4ff">
+                    <Text position={[-CONV_W / 2 + 0.053, yPos, 0]} anchorX="left" anchorY="middle" fontSize={0.018} color="#e8f4ff">
                       {truncated}
                     </Text>
                   </group>
                 )
               })
             )}
-          </group>
+        </group>
 
-          <group position={[0.50, -0.65, 0]}>
-            <mesh position={[0, 0, -0.002]}>
-              <planeGeometry args={[0.56, 0.30]} />
-              <meshBasicMaterial color={panelColor} transparent opacity={0.56} />
-            </mesh>
-            <Text position={[-0.255, 0.118, 0]} anchorX="left" anchorY="middle" fontSize={0.027} color="#cfe8ff">
-              PATIENT ABSTRACT
-            </Text>
-            <Text
-              position={[-0.255, 0.028, 0]}
-              anchorX="left"
-              anchorY="top"
-              fontSize={0.02}
-              maxWidth={0.5}
-              lineHeight={1.35}
-              textAlign="left"
-              color="#f3f8ff"
-            >
-              {summaryText}
-            </Text>
-          </group>
-
-          <group position={[0.50, -0.92, 0]}>
-            <mesh position={[0, 0, -0.002]} onClick={onEndSimulation}>
-              <planeGeometry args={[0.56, 0.068]} />
-              <meshBasicMaterial color="#5c0f1a" transparent opacity={0.9} />
-            </mesh>
-            <Text position={[0, 0, 0]} anchorX="center" anchorY="middle" fontSize={0.023} color="#ffcdd3">
+        <group position={lowerRightLayout.endSimulation}>
+            <RoundedRect
+              width={END_SIM_W}
+              height={END_SIM_H}
+              radius={endSimR}
+              color="#5c0f1a"
+              opacity={0.9}
+              borderColor="#ff8a95"
+              borderOpacity={0.45}
+              borderWidth={1}
+              z={-0.002}
+              onClick={(e) => {
+                e.stopPropagation()
+                onEndSimulation()
+              }}
+            />
+            <Text position={[0, 0, 0.003]} anchorX="center" anchorY="middle" fontSize={END_SIM_FONT} color="#ffcdd3">
               END SIMULATION
             </Text>
-          </group>
-        </>
-      )}
+        </group>
+      </>
     </group>
   )
 }

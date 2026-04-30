@@ -8,6 +8,7 @@ import OnboardingHUD from './OnboardingHUD'
 import SessionEndScreen from './SessionEndScreen'
 import LandingPage from './LandingPage'
 import SimulatedHUD from './SimulatedHUD'
+import UnsupportedMobilePage from './UnsupportedMobilePage'
 import { inferSpeaker } from './speakerAttribution'
 import { speechConfig, getSpeechProviderLabel, shouldUseExternalDictation } from './speechConfig'
 import { formatBudgetSummary, getSpeechBudgetSnapshot, recordSpeechSession } from './speechBudget'
@@ -71,6 +72,7 @@ function XRActiveFallback({
   conversation,
 }) {
   const groupRef = useRef(null)
+  const menuRef = useRef(null)
   const { camera } = useThree()
 
   useFrame(() => {
@@ -78,12 +80,44 @@ function XRActiveFallback({
     const worldOffset = activeOffset.clone().applyQuaternion(camera.quaternion)
     groupRef.current.position.copy(camera.position).add(worldOffset)
     groupRef.current.quaternion.copy(camera.quaternion)
+
+    if (!menuRef.current) return
+    const menuOffset = new Vector3(-0.46, 0.05, -0.7).applyQuaternion(camera.quaternion)
+    menuRef.current.position.copy(camera.position).add(menuOffset)
+    menuRef.current.quaternion.copy(camera.quaternion)
   })
 
   const recentConvo = conversation.slice(-2)
 
   return (
-    <group ref={groupRef}>
+    <>
+      {/* Left standalone menu panel */}
+      <group ref={menuRef}>
+        <mesh position={[0, 0, -0.002]}>
+          <planeGeometry args={[0.28, 0.28]} />
+          <meshBasicMaterial color="#091522" transparent opacity={0.9} depthWrite={false} />
+        </mesh>
+        {[
+          ['Patient Data', true, 0.09],
+          ['Test Results', false, 0.045],
+          ['Allergies', false, 0.0],
+          ['Heart Rate', false, -0.045],
+          ['Blood Pressure', false, -0.09],
+        ].map(([label, selected, y]) => (
+          <group key={label} position={[0, y, 0]}>
+            <mesh>
+              <planeGeometry args={[0.24, 0.036]} />
+              <meshBasicMaterial color={selected ? '#accbff' : '#0f2134'} transparent opacity={0.95} depthWrite={false} />
+            </mesh>
+            <Text position={[0, 0, 0.002]} anchorX="center" anchorY="middle" fontSize={0.015} color={selected ? '#0b1624' : '#ffffff'}>
+              {label}
+            </Text>
+          </group>
+        ))}
+      </group>
+
+      {/* Center-right info panel */}
+      <group ref={groupRef}>
       <mesh position={[0, 0, -0.002]}>
         <planeGeometry args={[0.68, 0.36]} />
         <meshBasicMaterial color="#091522" transparent opacity={0.86} depthWrite={false} />
@@ -112,49 +146,30 @@ function XRActiveFallback({
         ))
       )}
 
-      {/* Left: Styled menu stack inside current visible footprint */}
-      {[
-        ['Patient Data', true, 0.064],
-        ['Test Results', false, 0.024],
-        ['Allergies', false, -0.016],
-        ['Heart Rate', false, -0.056],
-        ['Blood Pressure', false, -0.096],
-      ].map(([label, selected, y]) => (
-        <group key={label} position={[-0.19, y, 0]}>
-          <mesh>
-            <planeGeometry args={[0.24, 0.034]} />
-            <meshBasicMaterial color={selected ? '#accbff' : '#0f2134'} transparent opacity={0.95} depthWrite={false} />
-          </mesh>
-          <Text position={[0, 0, 0.002]} anchorX="center" anchorY="middle" fontSize={0.0145} color={selected ? '#0b1624' : '#ffffff'}>
-            {label}
-          </Text>
-        </group>
-      ))}
-
       {/* Right: Patient detail card */}
-      <mesh position={[0.17, -0.006, -0.001]}>
+      <mesh position={[0.06, -0.006, -0.001]}>
         <planeGeometry args={[0.30, 0.22]} />
         <meshBasicMaterial color="#000000" transparent opacity={0.9} depthWrite={false} />
       </mesh>
-      <Text position={[0.17, 0.085, 0.002]} anchorX="center" anchorY="middle" fontSize={0.017} color="#ffffff">
+      <Text position={[0.06, 0.085, 0.002]} anchorX="center" anchorY="middle" fontSize={0.017} color="#ffffff">
         {`${patient.name} (${patient.age})`}
       </Text>
-      <Text position={[0.17, 0.058, 0.002]} anchorX="center" anchorY="middle" fontSize={0.013} color="#ffffff">
+      <Text position={[0.06, 0.058, 0.002]} anchorX="center" anchorY="middle" fontSize={0.013} color="#ffffff">
         {`Active: ${activeSpeaker}`}
       </Text>
-      <Text position={[0.17, 0.033, 0.002]} anchorX="center" anchorY="middle" fontSize={0.012} color="#9dbfe8">
+      <Text position={[0.06, 0.033, 0.002]} anchorX="center" anchorY="middle" fontSize={0.012} color="#9dbfe8">
         {`Mic: ${speechSupported ? micStatus : 'unsupported'}`}
       </Text>
-      <Text position={[0.17, 0.01, 0.002]} anchorX="center" anchorY="middle" fontSize={0.0115} color="#6bb5ff" maxWidth={0.27} textAlign="center">
+      <Text position={[0.06, 0.01, 0.002]} anchorX="center" anchorY="middle" fontSize={0.0115} color="#6bb5ff" maxWidth={0.27} textAlign="center">
         {speechProviderLabel ? `Provider: ${speechProviderLabel}` : 'Provider: --'}
       </Text>
-      <Text position={[0.17, -0.012, 0.002]} anchorX="center" anchorY="middle" fontSize={0.0115} color="#6bb5ff" maxWidth={0.27} textAlign="center">
+      <Text position={[0.06, -0.012, 0.002]} anchorX="center" anchorY="middle" fontSize={0.0115} color="#6bb5ff" maxWidth={0.27} textAlign="center">
         {budgetStatus ? `Budget: ${budgetStatus}` : 'Budget: --'}
       </Text>
-      <Text position={[0.17, -0.034, 0.002]} anchorX="center" anchorY="middle" fontSize={0.0115} color="#9dbfe8" maxWidth={0.27} textAlign="center">
+      <Text position={[0.06, -0.034, 0.002]} anchorX="center" anchorY="middle" fontSize={0.0115} color="#9dbfe8" maxWidth={0.27} textAlign="center">
         {lastHeardCommand ? `Heard: ${lastHeardCommand}` : 'Heard: --'}
       </Text>
-      <Text position={[0.17, -0.062, 0.002]} anchorX="center" anchorY="middle" fontSize={0.0125} color="#fff6de" maxWidth={0.27} textAlign="center">
+      <Text position={[0.06, -0.062, 0.002]} anchorX="center" anchorY="middle" fontSize={0.0125} color="#fff6de" maxWidth={0.27} textAlign="center">
         {patientLiveCaption || 'Awaiting patient speech...'}
       </Text>
 
@@ -165,12 +180,14 @@ function XRActiveFallback({
       <Text position={[0, -0.146, 0.002]} anchorX="center" anchorY="middle" fontSize={0.02} color="#ffcdd3">
         END SIMULATION
       </Text>
-    </group>
+      </group>
+    </>
   )
 }
 
 function App() {
   const [phase, setPhase] = useState('landing')
+  const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth)
   const [onboardingStep, setOnboardingStep] = useState(3)
   const [vitals, setVitals] = useState({ systolic: 120, diastolic: 80, spo2: 98 })
   const [conversation, setConversation] = useState([])
@@ -204,6 +221,12 @@ function App() {
   const budgetStatus = formatBudgetSummary(budgetSnapshot)
   const dictationEnabled = speechConfig.dictationEnabled
   const externalDictationActive = shouldUseExternalDictation()
+
+  useEffect(() => {
+    const handleResize = () => setViewportWidth(window.innerWidth)
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   useEffect(() => {
     const checkAr = async () => {
@@ -247,6 +270,10 @@ function App() {
   }, [])
 
   const handleEnterExperience = () => {
+    if (viewportWidth < 690) {
+      setPhase('unsupported-mobile')
+      return
+    }
     setPhase('onboarding')
   }
 
@@ -449,8 +476,9 @@ function App() {
       {phase === 'landing' && (
         <LandingPage onEnterExperience={handleEnterExperience} />
       )}
+      {phase === 'unsupported-mobile' && <UnsupportedMobilePage />}
 
-      {phase !== 'ended' && phase !== 'landing' && arSupport.checked && arSupport.supported && (
+      {phase !== 'ended' && phase !== 'landing' && phase !== 'unsupported-mobile' && arSupport.checked && arSupport.supported && (
         <div className="ar-controls">
           <ARButton className="ar-toggle" store={xrStore}>
             {(status) => {
@@ -471,7 +499,7 @@ function App() {
         </div>
       )}
 
-      {phase !== 'ended' && phase !== 'landing' && (
+      {phase !== 'ended' && phase !== 'landing' && phase !== 'unsupported-mobile' && (
         <Canvas camera={{ position: [0, 1.6, 0], fov: 60 }}>
           {arSupport.checked && arSupport.supported ? (
             <XR store={xrStore}>
@@ -519,14 +547,9 @@ function App() {
               )}
               {phase === 'active' && (
                 <SimulatedHUD
-                  vitals={vitals}
                   conversation={conversation}
                   activeSpeaker={activeSpeaker}
                   onEndSimulation={handleEndSimulation}
-                  patient={patientRecord}
-                  micStatus={micStatus}
-                  speechSupported={speechSupported}
-                  lastHeardCommand={lastHeardCommand}
                   patientLiveCaption={patientLiveCaption}
                   speakerAttributionStatus={speakerAttributionStatus}
                   speechProviderLabel={speechProviderLabel}

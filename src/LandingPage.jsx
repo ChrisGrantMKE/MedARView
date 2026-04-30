@@ -1,24 +1,4 @@
-import { useState } from 'react'
-import newHeroURL from './assets/NewHERO.png'
-
-const OLD_TEXT = [
-  {
-    heading: 'Welcome to MedARView',
-    body: 'Please press Continue to begin.',
-  },
-  {
-    heading: null,
-    body: 'Physicians are losing the ability to be fully present with their patients. Screen-based documentation pulls their attention away during every consultation, reducing eye contact, eroding trust and driving burnout.',
-  },
-  {
-    heading: null,
-    body: "MedARView restores presence by moving clinical intelligence into the doctor's field of vision, enabling eye-contact-first care while eliminating the documentation burden that follows every patient encounter.",
-  },
-  {
-    heading: 'Recording & Data Notice',
-    body: 'This app uses your microphone to capture and transcribe conversation audio during a visit session.\n\nAudio is streamed to a third-party speech recognition service for transcription and speaker identification. Transcripts are stored temporarily for this session only and are not transmitted to any additional parties.\n\nThis is a test environment using mock data only. Do not conduct real patient visits using this prototype.\n\nBy pressing Accept & Continue you consent to microphone capture and transcription for the duration of this demo session.',
-  },
-]
+import heroImage from './assets/NewHero.png'
 
 function LandingPage({ onEnterExperience }) {
   return (
@@ -32,18 +12,59 @@ function LandingPage({ onEnterExperience }) {
       flexDirection: 'column',
       alignItems: 'center',
       overflowY: 'auto',
-      padding: '40px 20px',
+      padding: '40px 20px 0',
     }}>
-      {/* Hero Image */}
-      <img
-        src={newHeroURL}
-        alt="MedARView Hero"
+      <header
         style={{
-          maxWidth: '100%',
-          height: 'auto',
+          maxWidth: '900px',
+          width: '100%',
           marginBottom: '40px',
+          borderRadius: '12px',
+          border: '1px solid rgba(172, 203, 255, 0.25)',
+          overflow: 'hidden',
+          position: 'relative',
         }}
-      />
+      >
+        <img
+          src={heroImage}
+          alt=""
+          style={{
+            width: '100%',
+            height: 'clamp(180px, 32vw, 340px)',
+            objectFit: 'cover',
+            objectPosition: 'center 35%',
+            display: 'block',
+          }}
+        />
+        <div
+          aria-hidden
+          style={{
+            position: 'absolute',
+            inset: 0,
+            pointerEvents: 'none',
+            background:
+              'linear-gradient(180deg, transparent 0%, transparent 35%, rgba(6, 13, 20, 0.55) 78%, rgba(6, 13, 20, 0.92) 100%)',
+          }}
+        />
+        <p
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: '28px',
+            margin: 0,
+            padding: '0 24px',
+            fontSize: 'clamp(1.5rem, 4vw, 2.25rem)',
+            fontWeight: 700,
+            color: '#cfe8ff',
+            letterSpacing: '0.04em',
+            textAlign: 'center',
+            textShadow: '0 2px 16px rgba(0, 0, 0, 0.65)',
+          }}
+        >
+          MedARView
+        </p>
+      </header>
 
       {/* Container for text and video */}
       <div style={{
@@ -148,7 +169,7 @@ function LandingPage({ onEnterExperience }) {
       <div style={{
         maxWidth: '900px',
         width: '100%',
-        marginTop: '20px',
+        marginTop: '20px'
       }}>
         <button
           onClick={onEnterExperience}
@@ -169,6 +190,21 @@ function LandingPage({ onEnterExperience }) {
           Enter Experience
         </button>
       </div>
+      <footer
+        style={{
+          marginTop: 'auto',
+          width: '100%',
+          minHeight: '200px',
+          borderTop: '1px solid rgba(186, 216, 255, 0.2)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#9dbfe8',
+          fontSize: '0.9rem',
+        }}
+      >
+        MedARView
+      </footer>
     </div>
   )
 }
