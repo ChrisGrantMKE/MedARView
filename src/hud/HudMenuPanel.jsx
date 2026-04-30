@@ -298,11 +298,11 @@ export default function HudMenuPanel({
 
       <group position={[0.08, 0.2, 0.002]}>
         <RoundedRect width={0.165} height={0.036} radius={0.016} color={hudTheme.toggleOff} opacity={0.95} z={0} />
-        <group position={[-0.042, 0, 0.001]} onClick={() => (overlayEnabled ? null : onToggleOverlay())}>
+        <group position={[-0.042, 0, 0.001]} onClick={() => (overlayEnabled ? null : onToggleOverlay())} onPointerDown={() => (overlayEnabled ? null : onToggleOverlay())}>
           <RoundedRect width={0.08} height={0.03} radius={0.015} color={overlayEnabled ? hudTheme.toggleOn : hudTheme.toggleOff} opacity={0.95} />
         </group>
         <Text position={[-0.042, 0, 0.002]} anchorX="center" anchorY="middle" fontSize={0.016} color={overlayEnabled ? hudTheme.toggleTextOn : '#ffffff'}>On</Text>
-        <group position={[0.042, 0, 0.001]} onClick={() => (overlayEnabled ? onToggleOverlay() : null)}>
+        <group position={[0.042, 0, 0.001]} onClick={() => (overlayEnabled ? onToggleOverlay() : null)} onPointerDown={() => (overlayEnabled ? onToggleOverlay() : null)}>
           <RoundedRect width={0.08} height={0.03} radius={0.015} color={overlayEnabled ? hudTheme.toggleOff : hudTheme.toggleOn} opacity={0.95} />
         </group>
         <Text position={[0.042, 0, 0.002]} anchorX="center" anchorY="middle" fontSize={0.016} color={!overlayEnabled ? hudTheme.toggleTextOn : '#ffffff'}>Off</Text>
@@ -318,6 +318,10 @@ export default function HudMenuPanel({
                 <group
                   position={[0, 0, 0]}
                   onClick={(e) => {
+                    e.stopPropagation()
+                    onToggleItem(item.id)
+                  }}
+                  onPointerDown={(e) => {
                     e.stopPropagation()
                     onToggleItem(item.id)
                   }}
