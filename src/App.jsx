@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { ARButton, XR, createXRStore } from '@react-three/xr'
-import HUD from './HUD'
+import { Text } from '@react-three/drei'
+import { useFrame, useThree } from '@react-three/fiber'
+import { Vector3 } from 'three'
 import OnboardingHUD from './OnboardingHUD'
 import SessionEndScreen from './SessionEndScreen'
 import LandingPage from './LandingPage'
@@ -28,6 +30,144 @@ const patientRecord = {
 }
 
 const clamp = (v, min, max) => Math.min(max, Math.max(min, v))
+const probeOffset = new Vector3(0, 0.2, -0.7)
+const activeOffset = new Vector3(0, 0.05, -0.72)
+
+function XRPhaseProbe({ phase }) {
+  const groupRef = useRef(null)
+  const { camera } = useThree()
+
+  useFrame(() => {
+    if (!groupRef.current) return
+    const worldOffset = probeOffset.clone().applyQuaternion(camera.quaternion)
+    groupRef.current.position.copy(camera.position).add(worldOffset)
+    groupRef.current.quaternion.copy(camera.quaternion)
+  })
+
+  const color = phase === 'active' ? '#ff2f7a' : '#0a6bc2'
+  return (
+    <group ref={groupRef}>
+      <mesh>
+        <planeGeometry args={[0.34, 0.08]} />
+        <meshBasicMaterial color={color} transparent opacity={0.94} depthWrite={false} />
+      </mesh>
+      <Text position={[0, 0, 0.002]} anchorX="center" anchorY="middle" fontSize={0.03} color="#ffffff">
+        {`PHASE: ${phase.toUpperCase()}`}
+      </Text>
+    </group>
+  )
+}
+
+function XRActiveFallback({
+  onEndSimulation,
+  patient,
+  activeSpeaker,
+  micStatus,
+  speechSupported,
+  patientLiveCaption,
+  speechProviderLabel,
+  budgetStatus,
+  lastHeardCommand,
+  conversation,
+}) {
+  const groupRef = useRef(null)
+  const { camera } = useThree()
+
+  useFrame(() => {
+    if (!groupRef.current) return
+    const worldOffset = activeOffset.clone().applyQuaternion(camera.quaternion)
+    groupRef.current.position.copy(camera.position).add(worldOffset)
+    groupRef.current.quaternion.copy(camera.quaternion)
+  })
+
+  const recentConvo = conversation.slice(-2)
+
+  return (
+    <group ref={groupRef}>
+      <mesh position={[0, 0, -0.002]}>
+        <planeGeometry args={[0.68, 0.36]} />
+        <meshBasicMaterial color="#091522" transparent opacity={0.86} depthWrite={false} />
+      </mesh>
+      <Text position={[0, 0.145, 0.002]} anchorX="center" anchorY="middle" fontSize={0.029} color="#cfe8ff">
+        MEDARVIEW HUD
+      </Text>
+      {recentConvo.length === 0 ? (
+        <Text position={[0, -0.078, 0.002]} anchorX="center" anchorY="middle" fontSize={0.013} color="#3a7aaa">
+          Waiting for conversation...
+        </Text>
+      ) : (
+        recentConvo.map((entry, index) => (
+          <Text
+            key={entry.id}
+            position={[0, -0.072 - index * 0.02, 0.002]}
+            anchorX="center"
+            anchorY="middle"
+            fontSize={0.012}
+            color="#e8f4ff"
+            maxWidth={0.68}
+            textAlign="center"
+          >
+            {`${entry.speaker}: ${entry.text.slice(0, 80)}`}
+          </Text>
+        ))
+      )}
+
+      {/* Left: Styled menu stack inside current visible footprint */}
+      {[
+        ['Patient Data', true, 0.064],
+        ['Test Results', false, 0.024],
+        ['Allergies', false, -0.016],
+        ['Heart Rate', false, -0.056],
+        ['Blood Pressure', false, -0.096],
+      ].map(([label, selected, y]) => (
+        <group key={label} position={[-0.19, y, 0]}>
+          <mesh>
+            <planeGeometry args={[0.24, 0.034]} />
+            <meshBasicMaterial color={selected ? '#accbff' : '#0f2134'} transparent opacity={0.95} depthWrite={false} />
+          </mesh>
+          <Text position={[0, 0, 0.002]} anchorX="center" anchorY="middle" fontSize={0.0145} color={selected ? '#0b1624' : '#ffffff'}>
+            {label}
+          </Text>
+        </group>
+      ))}
+
+      {/* Right: Patient detail card */}
+      <mesh position={[0.17, -0.006, -0.001]}>
+        <planeGeometry args={[0.30, 0.22]} />
+        <meshBasicMaterial color="#000000" transparent opacity={0.9} depthWrite={false} />
+      </mesh>
+      <Text position={[0.17, 0.085, 0.002]} anchorX="center" anchorY="middle" fontSize={0.017} color="#ffffff">
+        {`${patient.name} (${patient.age})`}
+      </Text>
+      <Text position={[0.17, 0.058, 0.002]} anchorX="center" anchorY="middle" fontSize={0.013} color="#ffffff">
+        {`Active: ${activeSpeaker}`}
+      </Text>
+      <Text position={[0.17, 0.033, 0.002]} anchorX="center" anchorY="middle" fontSize={0.012} color="#9dbfe8">
+        {`Mic: ${speechSupported ? micStatus : 'unsupported'}`}
+      </Text>
+      <Text position={[0.17, 0.01, 0.002]} anchorX="center" anchorY="middle" fontSize={0.0115} color="#6bb5ff" maxWidth={0.27} textAlign="center">
+        {speechProviderLabel ? `Provider: ${speechProviderLabel}` : 'Provider: --'}
+      </Text>
+      <Text position={[0.17, -0.012, 0.002]} anchorX="center" anchorY="middle" fontSize={0.0115} color="#6bb5ff" maxWidth={0.27} textAlign="center">
+        {budgetStatus ? `Budget: ${budgetStatus}` : 'Budget: --'}
+      </Text>
+      <Text position={[0.17, -0.034, 0.002]} anchorX="center" anchorY="middle" fontSize={0.0115} color="#9dbfe8" maxWidth={0.27} textAlign="center">
+        {lastHeardCommand ? `Heard: ${lastHeardCommand}` : 'Heard: --'}
+      </Text>
+      <Text position={[0.17, -0.062, 0.002]} anchorX="center" anchorY="middle" fontSize={0.0125} color="#fff6de" maxWidth={0.27} textAlign="center">
+        {patientLiveCaption || 'Awaiting patient speech...'}
+      </Text>
+
+      <mesh position={[0, -0.146, 0]} onClick={onEndSimulation}>
+        <planeGeometry args={[0.28, 0.052]} />
+        <meshBasicMaterial color="#5c0f1a" transparent opacity={0.9} />
+      </mesh>
+      <Text position={[0, -0.146, 0.002]} anchorX="center" anchorY="middle" fontSize={0.02} color="#ffcdd3">
+        END SIMULATION
+      </Text>
+    </group>
+  )
+}
 
 function App() {
   const [phase, setPhase] = useState('landing')
@@ -335,6 +475,7 @@ function App() {
         <Canvas camera={{ position: [0, 1.6, 0], fov: 60 }}>
           {arSupport.checked && arSupport.supported ? (
             <XR store={xrStore}>
+              {(phase === 'onboarding' || phase === 'active') && <XRPhaseProbe phase={phase} />}
               {phase === 'onboarding' && (
                 <OnboardingHUD
                   step={onboardingStep}
@@ -348,19 +489,17 @@ function App() {
                 />
               )}
               {phase === 'active' && (
-                <HUD
-                  vitals={vitals}
-                  conversation={conversation}
-                  activeSpeaker={activeSpeaker}
+                <XRActiveFallback
                   onEndSimulation={handleEndSimulation}
                   patient={patientRecord}
+                  activeSpeaker={activeSpeaker}
                   micStatus={micStatus}
                   speechSupported={speechSupported}
-                  lastHeardCommand={lastHeardCommand}
                   patientLiveCaption={patientLiveCaption}
-                  speakerAttributionStatus={speakerAttributionStatus}
                   speechProviderLabel={speechProviderLabel}
                   budgetStatus={budgetStatus}
+                  lastHeardCommand={lastHeardCommand}
+                  conversation={conversation}
                 />
               )}
             </XR>
