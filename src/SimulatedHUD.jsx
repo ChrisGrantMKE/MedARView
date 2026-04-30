@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useFrame, useThree } from '@react-three/fiber'
-import { Text, useTexture, Line } from '@react-three/drei'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
+import { Text, useTexture } from '@react-three/drei'
 import { Color, Vector3 } from 'three'
+
+const hudOffset = new Vector3(0, 0.05, -0.72)
 
 import patientIconURL from './assets/UI IMAGES/Patient data.png'
 import bloodPressureIconURL from './assets/UI IMAGES/BloodpressureO2.png'
@@ -9,25 +11,27 @@ import heartRateIconURL from './assets/UI IMAGES/Heartrate.png'
 import testResultsIconURL from './assets/UI IMAGES/Testresults.png'
 import allergiesIconURL from './assets/UI IMAGES/Allergies.png'
 import menuHeaderIconURL from './assets/UI IMAGES/Menu.png'
+import patientBgURL from './assets/PATIENT.png'
 
-const cameraOffset = new Vector3(-0.28, 0.18, -0.65)
 const panelColor = new Color('#091522')
 const detailPanelColor = new Color('#0e1a2e')
 const endDefault = new Color('#5c0f1a')
 const endHover = new Color('#8f1527')
 
-function HUD({ vitals, conversation, activeSpeaker, onEndSimulation, patient, micStatus, speechSupported, lastHeardCommand, patientLiveCaption, speakerAttributionStatus, speechProviderLabel, budgetStatus }) {
-  const groupRef = useRef(null)
-  const tickerTextRef = useRef(null)
-  const tickerOffsetRef = useRef(0.29)
-  const subtitleTextRef = useRef(null)
-  const subtitleOffsetRef = useRef(0.29)
-  const { camera } = useThree()
-  const [hoverEnd, setHoverEnd] = useState(false)
+function SimulatedHUD({ vitals, conversation, activeSpeaker, onEndSimulation, patient, micStatus, speechSupported, lastHeardCommand, patientLiveCaption, speakerAttributionStatus, speechProviderLabel, budgetStatus }) {
   const [selectedMenuId, setSelectedMenuId] = useState(null)
   const [overlayEnabled, setOverlayEnabled] = useState(true)
   const [touchStartX, setTouchStartX] = useState(null)
   const [dragging, setDragging] = useState(false)
+  const groupRef = useRef(null)
+  const { camera } = useThree()
+
+  useFrame(() => {
+    if (!groupRef.current) return
+    const worldOffset = hudOffset.clone().applyQuaternion(camera.quaternion)
+    groupRef.current.position.copy(camera.position).add(worldOffset)
+    groupRef.current.quaternion.copy(camera.quaternion)
+  })
 
   const textures = useTexture([
     patientIconURL,
@@ -36,47 +40,8 @@ function HUD({ vitals, conversation, activeSpeaker, onEndSimulation, patient, mi
     testResultsIconURL,
     allergiesIconURL,
     menuHeaderIconURL,
+    patientBgURL,
   ])
-
-  useEffect(() => {
-    tickerOffsetRef.current = 0.29
-  }, [patientLiveCaption])
-
-  useFrame((_, delta) => {
-    if (!groupRef.current) return
-    const worldOffset = cameraOffset.clone().applyQuaternion(camera.quaternion)
-    groupRef.current.position.copy(camera.position).add(worldOffset)
-    groupRef.current.quaternion.copy(camera.quaternion)
-
-    if (!tickerTextRef.current) return
-
-    const caption = patientLiveCaption || ''
-    const estimatedTextWidth = Math.max(0.16, caption.length * 0.009)
-    const resetX = 0.29
-    const minX = -0.29 - estimatedTextWidth
-
-    tickerOffsetRef.current -= delta * 0.18
-    if (tickerOffsetRef.current < minX) {
-      tickerOffsetRef.current = resetX
-    }
-
-    tickerTextRef.current.position.x = tickerOffsetRef.current
-
-    // Scrolling subtitle bar
-    if (!subtitleTextRef.current) return
-
-    const subtitleCaption = patientLiveCaption || ''
-    const subtitleEstimatedWidth = Math.max(0.16, subtitleCaption.length * 0.008)
-    const subtitleResetX = 0.29
-    const subtitleMinX = -0.29 - subtitleEstimatedWidth
-
-    subtitleOffsetRef.current -= delta * 0.12
-    if (subtitleOffsetRef.current < subtitleMinX) {
-      subtitleOffsetRef.current = subtitleResetX
-    }
-
-    subtitleTextRef.current.position.x = subtitleOffsetRef.current
-  })
 
   const menuItems = useMemo(() => [
     {
@@ -153,8 +118,14 @@ function HUD({ vitals, conversation, activeSpeaker, onEndSimulation, patient, mi
 
   return (
     <group ref={groupRef}>
-      {/* ─── MENU PANEL ─── */}
-      <group position={[-0.28, 0.12, 0]}>
+      {/* Background image */}
+      <mesh position={[0, 0, -0.002]}>
+        <planeGeometry args={[1.4, 1.2]} />
+        <meshBasicMaterial map={textures[6]} />
+      </mesh>
+
+      {/* Menu Panel - left side */}
+      <group position={[-0.65, 0.15, 0]}>
         <mesh
           position={[0, 0, -0.002]}
           onPointerDown={handlePointerDown}
@@ -234,14 +205,14 @@ function HUD({ vitals, conversation, activeSpeaker, onEndSimulation, patient, mi
               {selectedMenu.body}
             </Text>
             <Text position={[0, -0.067, 0.001]} anchorX="center" anchorY="middle" fontSize={0.01} color="#89c4ff">
-              Swipe left to go back
+              Click menu item again to close
             </Text>
           </group>
         )}
       </group>
 
-      {/* ─── PATIENT LIVE TICKER ─── */}
-      <group position={[0.16, 0.245, 0]}>
+      {/* HUD Panels - right side */}
+      <group position={[0.50, 0.15, 0]}>
         <mesh position={[0, 0, -0.002]}>
           <planeGeometry args={[0.56, 0.062]} />
           <meshBasicMaterial color={panelColor} transparent opacity={0.7} />
@@ -250,21 +221,19 @@ function HUD({ vitals, conversation, activeSpeaker, onEndSimulation, patient, mi
           PATIENT LIVE
         </Text>
         <Text
-          ref={tickerTextRef}
           position={[0.29, 0, 0]}
           anchorX="left"
           anchorY="middle"
           fontSize={0.017}
           color="#fff6de"
-          maxWidth={1.2}
+          maxWidth={0.5}
           textAlign="left"
         >
           {patientLiveCaption || 'Awaiting patient speech...'}
         </Text>
       </group>
 
-      {/* ─── LIVE VITALS ─── */}
-      <group position={[0.16, 0.1, 0]}>
+      <group position={[0.50, -0.12, 0]}>
         <mesh position={[0, 0, -0.002]}>
           <planeGeometry args={[0.56, 0.2]} />
           <meshBasicMaterial color={panelColor} transparent opacity={0.58} />
@@ -280,8 +249,7 @@ function HUD({ vitals, conversation, activeSpeaker, onEndSimulation, patient, mi
         </Text>
       </group>
 
-      {/* ─── CONVERSATION LOG ─── */}
-      <group position={[0.16, -0.12, 0]}>
+      <group position={[0.50, -0.38, 0]}>
         <mesh position={[0, 0, -0.002]}>
           <planeGeometry args={[0.56, 0.26]} />
           <meshBasicMaterial color={panelColor} transparent opacity={0.58} />
@@ -293,7 +261,7 @@ function HUD({ vitals, conversation, activeSpeaker, onEndSimulation, patient, mi
           {`Active: ${activeSpeaker}`}
         </Text>
         <Text position={[0.255, 0.072, 0]} anchorX="right" anchorY="middle" fontSize={0.013} color="#6bb5ff">
-          {`Mic: ${speechSupported ? micStatus : 'unsupported'}`}
+          Mic: disabled (simulated mode)
         </Text>
         <Text position={[0.255, 0.048, 0]} anchorX="right" anchorY="middle" fontSize={0.012} color="#4f7a9a" maxWidth={0.21} textAlign="right">
           {speakerAttributionStatus ? `Attribution: ${speakerAttributionStatus}` : 'Attribution: --'}
@@ -303,9 +271,6 @@ function HUD({ vitals, conversation, activeSpeaker, onEndSimulation, patient, mi
         </Text>
         <Text position={[0.255, 0.001, 0]} anchorX="right" anchorY="middle" fontSize={0.011} color="#3f6888" maxWidth={0.21} textAlign="right">
           {budgetStatus ? `Budget: ${budgetStatus}` : 'Budget: --'}
-        </Text>
-        <Text position={[0.255, -0.022, 0]} anchorX="right" anchorY="middle" fontSize={0.011} color="#3f6888" maxWidth={0.21} textAlign="right">
-          {lastHeardCommand ? `Heard: ${lastHeardCommand}` : 'Heard: --'}
         </Text>
         {recentConvo.length === 0 ? (
           <Text position={[-0.255, 0.006, 0]} anchorX="left" anchorY="middle" fontSize={0.018} color="#3a5a70">
@@ -331,8 +296,7 @@ function HUD({ vitals, conversation, activeSpeaker, onEndSimulation, patient, mi
         )}
       </group>
 
-      {/* ─── PATIENT ABSTRACT ─── */}
-      <group position={[0.16, -0.39, 0]}>
+      <group position={[0.50, -0.65, 0]}>
         <mesh position={[0, 0, -0.002]}>
           <planeGeometry args={[0.56, 0.30]} />
           <meshBasicMaterial color={panelColor} transparent opacity={0.56} />
@@ -354,50 +318,20 @@ function HUD({ vitals, conversation, activeSpeaker, onEndSimulation, patient, mi
         </Text>
       </group>
 
-      {/* ─── END SIMULATION BUTTON ─── */}
-      <group position={[0.22, -0.62, 0]}>
+      <group position={[0.50, -0.92, 0]}>
         <mesh
           position={[0, 0, -0.002]}
           onClick={onEndSimulation}
-          onPointerOver={() => setHoverEnd(true)}
-          onPointerOut={() => setHoverEnd(false)}
         >
-          <planeGeometry args={[0.29, 0.058]} />
-          <meshBasicMaterial color={hoverEnd ? '#8f1527' : '#5c0f1a'} transparent opacity={0.85} />
+          <planeGeometry args={[0.56, 0.068]} />
+          <meshBasicMaterial color={endDefault} transparent opacity={0.9} />
         </mesh>
-        <Line
-          points={[[-0.145, -0.029, 0.001], [0.145, -0.029, 0.001], [0.145, 0.029, 0.001], [-0.145, 0.029, 0.001], [-0.145, -0.029, 0.001]]}
-          color="#ff6a78"
-          lineWidth={4}
-          transparent
-          opacity={0.95}
-        />
-        <Text position={[0, 0, 0.002]} anchorX="center" anchorY="middle" fontSize={0.022} color="#ffcdd3">
+        <Text position={[0, 0, 0]} anchorX="center" anchorY="middle" fontSize={0.023} color="#ffcdd3">
           END SIMULATION
-        </Text>
-      </group>
-
-      {/* ─── SCROLLING PATIENT SUBTITLE BAR ─── */}
-      <group position={[0, -0.68, 0]}>
-        <mesh position={[0, 0, -0.002]}>
-          <planeGeometry args={[0.56, 0.04]} />
-          <meshBasicMaterial color={panelColor} transparent opacity={0.8} />
-        </mesh>
-        <Text
-          ref={subtitleTextRef}
-          position={[0.29, 0, 0]}
-          anchorX="left"
-          anchorY="middle"
-          fontSize={0.015}
-          color="#f3c96b"
-          maxWidth={2}
-          textAlign="left"
-        >
-          {patientLiveCaption}
         </Text>
       </group>
     </group>
   )
 }
 
-export default HUD
+export default SimulatedHUD

@@ -4,6 +4,8 @@ import { ARButton, XR, createXRStore } from '@react-three/xr'
 import HUD from './HUD'
 import OnboardingHUD from './OnboardingHUD'
 import SessionEndScreen from './SessionEndScreen'
+import LandingPage from './LandingPage'
+import SimulatedHUD from './SimulatedHUD'
 import { inferSpeaker } from './speakerAttribution'
 import { speechConfig, getSpeechProviderLabel, shouldUseExternalDictation } from './speechConfig'
 import { formatBudgetSummary, getSpeechBudgetSnapshot, recordSpeechSession } from './speechBudget'
@@ -28,8 +30,8 @@ const patientRecord = {
 const clamp = (v, min, max) => Math.min(max, Math.max(min, v))
 
 function App() {
-  const [phase, setPhase] = useState('onboarding')
-  const [onboardingStep, setOnboardingStep] = useState(0)
+  const [phase, setPhase] = useState('landing')
+  const [onboardingStep, setOnboardingStep] = useState(3)
   const [vitals, setVitals] = useState({ systolic: 120, diastolic: 80, spo2: 98 })
   const [conversation, setConversation] = useState([])
   const [activeSpeaker, setActiveSpeaker] = useState('Doctor')
@@ -47,8 +49,8 @@ function App() {
   })
   const sessionStartRef = useRef(Date.now())
   const sessionBudgetStartRef = useRef(null)
-  const phaseRef = useRef('onboarding')
-  const stepRef = useRef(0)
+  const phaseRef = useRef('landing')
+  const stepRef = useRef(2)
   const speakerRef = useRef('Doctor')
   const conversationRef = useRef([])
   const recognitionRef = useRef(null)
@@ -104,6 +106,10 @@ function App() {
     checkAr()
   }, [])
 
+  const handleEnterExperience = () => {
+    setPhase('onboarding')
+  }
+
   useEffect(() => {
     const id = setInterval(() => {
       setVitals(prev => ({
@@ -116,6 +122,17 @@ function App() {
   }, [])
 
   useEffect(() => {
+    // Disable speech for simulated (non-WebXR) experience
+    if (arSupport.checked && !arSupport.supported && phase === 'active') {
+      setSpeechSupported(true)
+      setMicPermission('n/a')
+      setMicStatus('disabled')
+      setLastHeardCommand('Dictation disabled in simulated mode.')
+      setPatientLiveCaption('Dictation disabled.')
+      setSpeakerAttributionStatus('Dictation disabled.')
+      return
+    }
+
     if (!dictationEnabled) {
       setSpeechSupported(true)
       setMicPermission('n/a')
@@ -251,7 +268,7 @@ function App() {
         // ignore
       }
     }
-  }, [dictationEnabled, budgetSnapshot.exhausted])
+  }, [dictationEnabled, budgetSnapshot.exhausted, arSupport.supported, arSupport.checked, phase])
 
   const handleAdvanceOnboarding = () => setOnboardingStep(prev => prev + 1)
 
@@ -287,7 +304,11 @@ function App() {
 
   return (
     <main className="app-shell">
-      {phase !== 'ended' && (
+      {phase === 'landing' && (
+        <LandingPage onEnterExperience={handleEnterExperience} />
+      )}
+
+      {phase !== 'ended' && phase !== 'landing' && arSupport.checked && arSupport.supported && (
         <div className="ar-controls">
           <ARButton className="ar-toggle" store={xrStore}>
             {(status) => {
@@ -308,38 +329,71 @@ function App() {
         </div>
       )}
 
-      {phase !== 'ended' && (
+      {phase !== 'ended' && phase !== 'landing' && (
         <Canvas camera={{ position: [0, 1.6, 0], fov: 60 }}>
-          <XR store={xrStore}>
-            {phase === 'onboarding' && (
-              <OnboardingHUD
-                step={onboardingStep}
-                onContinue={handleAdvanceOnboarding}
-                onBeginVisit={handleBeginVisit}
-                speechSupported={speechSupported}
-                micStatus={micStatus}
-                lastHeardCommand={lastHeardCommand}
-                speechProviderLabel={speechProviderLabel}
-                budgetStatus={budgetStatus}
-              />
-            )}
-            {phase === 'active' && (
-              <HUD
-                vitals={vitals}
-                conversation={conversation}
-                activeSpeaker={activeSpeaker}
-                onEndSimulation={handleEndSimulation}
-                patient={patientRecord}
-                micStatus={micStatus}
-                speechSupported={speechSupported}
-                lastHeardCommand={lastHeardCommand}
-                patientLiveCaption={patientLiveCaption}
-                speakerAttributionStatus={speakerAttributionStatus}
-                speechProviderLabel={speechProviderLabel}
-                budgetStatus={budgetStatus}
-              />
-            )}
-          </XR>
+          {arSupport.checked && arSupport.supported ? (
+            <XR store={xrStore}>
+              {phase === 'onboarding' && (
+                <OnboardingHUD
+                  step={onboardingStep}
+                  onContinue={handleAdvanceOnboarding}
+                  onBeginVisit={handleBeginVisit}
+                  speechSupported={speechSupported}
+                  micStatus={micStatus}
+                  lastHeardCommand={lastHeardCommand}
+                  speechProviderLabel={speechProviderLabel}
+                  budgetStatus={budgetStatus}
+                />
+              )}
+              {phase === 'active' && (
+                <HUD
+                  vitals={vitals}
+                  conversation={conversation}
+                  activeSpeaker={activeSpeaker}
+                  onEndSimulation={handleEndSimulation}
+                  patient={patientRecord}
+                  micStatus={micStatus}
+                  speechSupported={speechSupported}
+                  lastHeardCommand={lastHeardCommand}
+                  patientLiveCaption={patientLiveCaption}
+                  speakerAttributionStatus={speakerAttributionStatus}
+                  speechProviderLabel={speechProviderLabel}
+                  budgetStatus={budgetStatus}
+                />
+              )}
+            </XR>
+          ) : (
+            <>
+              {phase === 'onboarding' && (
+                <OnboardingHUD
+                  step={onboardingStep}
+                  onContinue={handleAdvanceOnboarding}
+                  onBeginVisit={handleBeginVisit}
+                  speechSupported={speechSupported}
+                  micStatus={micStatus}
+                  lastHeardCommand={lastHeardCommand}
+                  speechProviderLabel={speechProviderLabel}
+                  budgetStatus={budgetStatus}
+                />
+              )}
+              {phase === 'active' && (
+                <SimulatedHUD
+                  vitals={vitals}
+                  conversation={conversation}
+                  activeSpeaker={activeSpeaker}
+                  onEndSimulation={handleEndSimulation}
+                  patient={patientRecord}
+                  micStatus={micStatus}
+                  speechSupported={speechSupported}
+                  lastHeardCommand={lastHeardCommand}
+                  patientLiveCaption={patientLiveCaption}
+                  speakerAttributionStatus={speakerAttributionStatus}
+                  speechProviderLabel={speechProviderLabel}
+                  budgetStatus={budgetStatus}
+                />
+              )}
+            </>
+          )}
         </Canvas>
       )}
 

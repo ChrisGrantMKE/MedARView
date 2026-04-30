@@ -47,8 +47,8 @@ function OnboardingHUD({ step, onContinue, onBeginVisit, speechSupported, micSta
     groupRef.current.quaternion.copy(camera.quaternion)
   })
 
-  // ── Steps 0–3: message panel ──────────────────────────────────────
-  if (step <= 3) {
+  // ── Steps 0–2: message panel ──────────────────────────────────────
+  if (step < 3) {
     const { heading, body, cta } = STEPS[step]
     const isConsent = step === 3
     const bodyY = heading ? (isConsent ? 0.04 : 0.018) : 0.055
@@ -108,15 +108,15 @@ function OnboardingHUD({ step, onContinue, onBeginVisit, speechSupported, micSta
   // ── Step 3: Demo setup ────────────────────────────────────────────
   return (
     <group ref={groupRef}>
-      {/* Full background */}
+      {/* Full background - 40% larger */}
       <mesh position={[0.05, 0, -0.002]}>
-        <planeGeometry args={[0.70, 0.58]} />
+        <planeGeometry args={[0.98, 0.812]} />
         <meshBasicMaterial color={panelDark} transparent opacity={0.72} />
       </mesh>
 
-      {/* ── Left: instructions ── */}
+      {/* ── Left Pane: instructions with margin ── */}
       <Text
-        position={[-0.14, 0.245, 0]}
+        position={[-0.24, 0.35, 0]}
         anchorX="center"
         anchorY="middle"
         fontSize={0.026}
@@ -126,11 +126,11 @@ function OnboardingHUD({ step, onContinue, onBeginVisit, speechSupported, micSta
       </Text>
 
       <Text
-        position={[-0.14, 0.04, 0]}
+        position={[-0.24, 0.08, 0]}
         anchorX="center"
         anchorY="middle"
         fontSize={0.019}
-        maxWidth={0.32}
+        maxWidth={0.38}
         textAlign="left"
         lineHeight={1.5}
         color="#f3f8ff"
@@ -140,7 +140,7 @@ function OnboardingHUD({ step, onContinue, onBeginVisit, speechSupported, micSta
 
       {/* Listening indicator */}
       <Text
-        position={[-0.14, -0.232, 0]}
+        position={[-0.24, -0.28, 0]}
         anchorX="center"
         anchorY="middle"
         fontSize={0.018}
@@ -150,71 +150,57 @@ function OnboardingHUD({ step, onContinue, onBeginVisit, speechSupported, micSta
       </Text>
 
       <Text
-        position={[-0.14, -0.252, 0]}
+        position={[-0.24, -0.31, 0]}
         anchorX="center"
         anchorY="middle"
         fontSize={0.012}
         color="#3a7aaa"
-        maxWidth={0.31}
+        maxWidth={0.37}
         textAlign="center"
       >
         {lastHeardCommand ? `Last heard: ${lastHeardCommand}` : 'Last heard: --'}
       </Text>
 
       <Text
-        position={[-0.14, -0.274, 0]}
+        position={[-0.24, -0.33, 0]}
         anchorX="center"
         anchorY="middle"
         fontSize={0.012}
         color="#3a7aaa"
-        maxWidth={0.31}
+        maxWidth={0.37}
         textAlign="center"
       >
         {speechProviderLabel ? `Dictation provider: ${speechProviderLabel}` : 'Dictation provider: --'}
       </Text>
 
       <Text
-        position={[-0.14, -0.296, 0]}
+        position={[-0.24, -0.35, 0]}
         anchorX="center"
         anchorY="middle"
         fontSize={0.012}
         color="#3a7aaa"
-        maxWidth={0.31}
+        maxWidth={0.37}
         textAlign="center"
       >
         {budgetStatus ? `Budget: ${budgetStatus}` : 'Budget: --'}
       </Text>
 
-      {/* Manual Begin Visit fallback button */}
-      <mesh
-        position={[-0.14, -0.334, 0]}
-        onClick={onBeginVisit}
-        onPointerOver={() => setHoverBegin(true)}
-        onPointerOut={() => setHoverBegin(false)}
-      >
-        <planeGeometry args={[0.22, 0.04]} />
-        <meshBasicMaterial color={hoverBegin ? btnGreenHover : btnGreen} transparent opacity={0.88} />
-      </mesh>
-      <Text position={[-0.14, -0.334, 0.002]} anchorX="center" anchorY="middle" fontSize={0.017} color="#a8f5d0">
-        TAP TO BEGIN VISIT
-      </Text>
-
-      {/* ── Right: patient silhouette ── */}
-      <mesh position={[0.26, 0.04, -0.003]}>
+      {/* ── Right Pane: patient silhouette and green button ── */}
+      <mesh position={[0.34, 0.04, -0.003]}>
         <planeGeometry args={[0.22, 0.46]} />
         <meshBasicMaterial color="#050f18" transparent opacity={0.55} />
       </mesh>
 
       <Image
         url={seatedOutlineUrl}
-        position={[0.26, 0.06, 0]}
+        position={[0.34, 0.06, 0]}
         scale={[0.135, 0.26, 1]}
         transparent
         opacity={0.9}
       />
 
       <Text
-        position={[0.26, -0.215, 0]}
+        position={[0.34, -0.215, 0]}
         anchorX="center"
         anchorY="middle"
         fontSize={0.019}
@@ -223,13 +209,27 @@ function OnboardingHUD({ step, onContinue, onBeginVisit, speechSupported, micSta
         PATIENT
       </Text>
       <Text
-        position={[0.26, -0.238, 0]}
+        position={[0.34, -0.238, 0]}
         anchorX="center"
         anchorY="middle"
         fontSize={0.014}
         color="#3a7aaa"
       >
         (~8 ft / 2.4 m away)
+      </Text>
+
+      {/* Green button under the outline */}
+      <mesh
+        position={[0.34, -0.28, 0]}
+        onClick={onBeginVisit}
+        onPointerOver={() => setHoverBegin(true)}
+        onPointerOut={() => setHoverBegin(false)}
+      >
+        <planeGeometry args={[0.22, 0.04]} />
+        <meshBasicMaterial color={hoverBegin ? btnGreenHover : btnGreen} transparent opacity={0.88} />
+      </mesh>
+      <Text position={[0.34, -0.28, 0.002]} anchorX="center" anchorY="middle" fontSize={0.017} color="#a8f5d0">
+        TAP TO BEGIN VISIT
       </Text>
     </group>
   )
