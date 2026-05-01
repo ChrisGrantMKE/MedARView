@@ -5,9 +5,17 @@
   overflow: hidden;
 }
 
-/* Simulated (non-WebXR) HUD: white letterboxing / shell behind canvas */
+/* Landing scrolls as a normal page; default overflow:hidden clipped the hero flex layout */
+.app-shell--landing {
+  overflow-x: hidden;
+  overflow-y: auto;
+  height: auto;
+  min-height: 100vh;
+}
+
+/* Simulated (non-WebXR) HUD: same base as landing page */
 .app-shell--simulated {
-  background: #ffffff;
+  background: #060d14;
 }
 
 .ar-controls {

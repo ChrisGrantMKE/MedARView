@@ -186,7 +186,9 @@ function XRActiveFallback({
 }
 
 function App() {
-  const [phase, setPhase] = useState('landing')
+  const [phase, setPhase] = useState(() =>
+    typeof window !== 'undefined' && window.innerWidth < 690 ? 'unsupported-mobile' : 'landing'
+  )
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth)
   const [onboardingStep, setOnboardingStep] = useState(3)
   const [vitals, setVitals] = useState({ systolic: 120, diastolic: 80, spo2: 98 })
@@ -206,7 +208,7 @@ function App() {
   })
   const sessionStartRef = useRef(Date.now())
   const sessionBudgetStartRef = useRef(null)
-  const phaseRef = useRef('landing')
+  const phaseRef = useRef(phase)
   const stepRef = useRef(2)
   const speakerRef = useRef('Doctor')
   const conversationRef = useRef([])
@@ -275,6 +277,14 @@ function App() {
       return
     }
     setPhase('onboarding')
+  }
+
+  const handleUnsupportedMobileGoBack = () => {
+    if (typeof window !== 'undefined' && window.history.length > 1) {
+      window.history.back()
+      return
+    }
+    setPhase('landing')
   }
 
   useEffect(() => {
@@ -472,11 +482,17 @@ function App() {
   const simulatedActiveUi = arSupport.checked && !arSupport.supported && phase === 'active'
 
   return (
-    <main className={`app-shell${simulatedActiveUi ? ' app-shell--simulated' : ''}`}>
+    <main
+      className={`app-shell${simulatedActiveUi ? ' app-shell--simulated' : ''}${
+        phase === 'landing' || phase === 'unsupported-mobile' ? ' app-shell--landing' : ''
+      }`}
+    >
       {phase === 'landing' && (
         <LandingPage onEnterExperience={handleEnterExperience} />
       )}
-      {phase === 'unsupported-mobile' && <UnsupportedMobilePage />}
+      {phase === 'unsupported-mobile' && (
+        <UnsupportedMobilePage onGoBack={handleUnsupportedMobileGoBack} />
+      )}
 
       {phase !== 'ended' && phase !== 'landing' && phase !== 'unsupported-mobile' && arSupport.checked && arSupport.supported && (
         <div className="ar-controls">

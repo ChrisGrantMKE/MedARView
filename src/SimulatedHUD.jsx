@@ -9,6 +9,9 @@ import patientVideoUrl from './assets/patient.mp4'
 
 const PATIENT_BG_FALLBACK = '#1e3248'
 
+/** Match `LandingPage` root background so simulation feels in the same environment */
+const SIM_SCENE_BACKGROUND = '#060d14'
+
 const hudOffset = new Vector3(0, 0.05, -0.72)
 
 const panelColor = new Color('#091522')
@@ -59,8 +62,8 @@ function SimulatedHUD({
     const prevClear = new Color()
     gl.getClearColor(prevClear)
     const prevAlpha = gl.getClearAlpha()
-    scene.background = new Color('#ffffff')
-    gl.setClearColor('#ffffff', 1)
+    scene.background = new Color(SIM_SCENE_BACKGROUND)
+    gl.setClearColor(SIM_SCENE_BACKGROUND, 1)
     return () => {
       scene.background = prevBg
       gl.setClearColor(prevClear, prevAlpha)

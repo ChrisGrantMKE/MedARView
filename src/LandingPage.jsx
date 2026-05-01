@@ -3,73 +3,61 @@ import heroImage from './assets/NewHero.png'
 function LandingPage({ onEnterExperience }) {
   return (
     <div style={{
-      width: '100vw',
-      height: '100vh',
+      width: '100%',
+      minHeight: '100vh',
+      boxSizing: 'border-box',
       background: '#060d14',
       color: '#f3f7fc',
       fontFamily: 'Segoe UI, Tahoma, Geneva, Verdana, sans-serif',
       display: 'flex',
       flexDirection: 'column',
-      alignItems: 'center',
+      /* stretch so children’s width:100% resolves to the padded area (center + zero width broke the hero img) */
+      alignItems: 'stretch',
       overflowY: 'auto',
       padding: '40px 20px 0',
     }}>
-      <header
+      <div
         style={{
-          maxWidth: '900px',
           width: '100%',
-          marginBottom: '40px',
-          borderRadius: '12px',
-          border: '1px solid rgba(172, 203, 255, 0.25)',
-          overflow: 'hidden',
-          position: 'relative',
+          maxWidth: '900px',
+          margin: '0 auto 40px',
+          flexShrink: 0,
         }}
       >
-        <img
-          src={heroImage}
-          alt=""
+        <header
           style={{
             width: '100%',
-            height: 'clamp(180px, 32vw, 340px)',
-            objectFit: 'cover',
-            objectPosition: 'center 35%',
-            display: 'block',
-          }}
-        />
-        <div
-          aria-hidden
-          style={{
-            position: 'absolute',
-            inset: 0,
-            pointerEvents: 'none',
-            background:
-              'linear-gradient(180deg, transparent 0%, transparent 35%, rgba(6, 13, 20, 0.55) 78%, rgba(6, 13, 20, 0.92) 100%)',
-          }}
-        />
-        <p
-          style={{
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            bottom: '28px',
-            margin: 0,
-            padding: '0 24px',
-            fontSize: 'clamp(1.5rem, 4vw, 2.25rem)',
-            fontWeight: 700,
-            color: '#cfe8ff',
-            letterSpacing: '0.04em',
-            textAlign: 'center',
-            textShadow: '0 2px 16px rgba(0, 0, 0, 0.65)',
+            borderRadius: '12px',
+            border: '1px solid rgba(172, 203, 255, 0.25)',
+            overflow: 'hidden',
+            position: 'relative',
+            background: '#0a0c10',
           }}
         >
-          MedARView
-        </p>
-      </header>
+          <img
+            src={heroImage}
+            alt="MedARView — See Patients. Not Just Symptoms."
+            width={1200}
+            height={400}
+            style={{
+              width: '100%',
+              height: 'auto',
+              maxHeight: 'min(420px, 42vw)',
+              minHeight: '140px',
+              objectFit: 'contain',
+              objectPosition: 'center center',
+              display: 'block',
+            }}
+          />
+        </header>
+      </div>
 
       {/* Container for text and video */}
       <div style={{
         maxWidth: '900px',
         width: '100%',
+        margin: '0 auto',
+        flexShrink: 0,
       }}>
         {/* Vimeo Video - full width of text container */}
         <div style={{
@@ -169,7 +157,8 @@ function LandingPage({ onEnterExperience }) {
       <div style={{
         maxWidth: '900px',
         width: '100%',
-        marginTop: '20px'
+        margin: '20px auto 0',
+        flexShrink: 0,
       }}>
         <button
           onClick={onEnterExperience}
