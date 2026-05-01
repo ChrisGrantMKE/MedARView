@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { ARButton, XR, createXRStore } from '@react-three/xr'
+import { ARButton, XR, XRDomOverlay, createXRStore } from '@react-three/xr'
 import { Text } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
 import { Vector3 } from 'three'
@@ -14,11 +14,17 @@ import { speechConfig, getSpeechProviderLabel, shouldUseExternalDictation } from
 import { formatBudgetSummary, getSpeechBudgetSnapshot, recordSpeechSession } from './speechBudget'
 import './App.css'
 
+/**
+ * Do not pass `customSessionInit` here: @pmndrs/xr's `buildXRSessionInit` returns it verbatim and skips merging
+ * `domOverlay: { root }`, which breaks dom-overlay (and the in-session End bar) on several browsers.
+ * Use top-level flags (e.g. `layers`, `handTracking`) to tune optional features instead.
+ */
 const xrStore = createXRStore({
-  customSessionInit: {
-    requiredFeatures: ['local-floor'],
-    optionalFeatures: ['hand-tracking', 'layers', 'dom-overlay'],
-  },
+  offerSession: false,
+  handTracking: true,
+  /** `layers` off avoids projection-layer teardown bugs on some Meta builds that block `session.end` / reload. */
+  layers: false,
+  domOverlay: true,
 })
 
 const patientRecord = {
@@ -32,6 +38,26 @@ const patientRecord = {
 
 const clamp = (v, min, max) => Math.min(max, Math.max(min, v))
 const activeOffset = new Vector3(0, 0.05, -0.72)
+
+/** Keeps `gl.xr.getSession()` in sync for exit — store session can lag vs Three's WebXRManager on some paths. */
+function XrActiveSessionProbe({ sessionRef }) {
+  const gl = useThree((s) => s.gl)
+  useFrame(() => {
+    sessionRef.current = gl.xr.getSession() ?? null
+  })
+  return null
+}
+
+/** Dom-overlay control so `session.end()` runs from a real DOM tap where the browser requires it. */
+function WebXrSessionEndBar({ onEndSimulation }) {
+  return (
+    <XRDomOverlay className="xr-session-end-bar">
+      <button type="button" className="xr-session-end-bar__btn" onClick={onEndSimulation}>
+        End simulation
+      </button>
+    </XRDomOverlay>
+  )
+}
 
 function XRActiveFallback({
   onEndSimulation,
@@ -147,13 +173,31 @@ function XRActiveFallback({
         {patientLiveCaption || 'Awaiting patient speech...'}
       </Text>
 
-      <mesh position={[0, -0.146, 0]} onClick={onEndSimulation}>
-        <planeGeometry args={[0.28, 0.052]} />
-        <meshBasicMaterial color="#5c0f1a" transparent opacity={0.9} />
-      </mesh>
-      <Text position={[0, -0.146, 0.002]} anchorX="center" anchorY="middle" fontSize={0.02} color="#ffcdd3">
-        END SIMULATION
-      </Text>
+      <group
+        position={[0, -0.146, 0]}
+        onClick={(e) => {
+          e.stopPropagation()
+          onEndSimulation()
+        }}
+      >
+        <mesh>
+          <planeGeometry args={[0.28, 0.052]} />
+          <meshBasicMaterial color="#5c0f1a" transparent opacity={0.9} />
+        </mesh>
+        <Text
+          position={[0, 0, 0.002]}
+          anchorX="center"
+          anchorY="middle"
+          fontSize={0.02}
+          color="#ffcdd3"
+          onClick={(e) => {
+            e.stopPropagation()
+            onEndSimulation()
+          }}
+        >
+          END SIMULATION
+        </Text>
+      </group>
       </group>
     </>
   )
@@ -182,6 +226,10 @@ function App() {
   })
   const sessionStartRef = useRef(Date.now())
   const sessionBudgetStartRef = useRef(null)
+  /** Mirrors `gl.xr.getSession()` from inside `<XR>`; used when ending immersive AR. */
+  const xrNativeSessionRef = useRef(null)
+  /** Prevents double immersive-exit wiring (two subscribers / timers). */
+  const xrImmersiveExitBusyRef = useRef(false)
   const phaseRef = useRef(phase)
   const stepRef = useRef(2)
   const speakerRef = useRef('Doctor')
@@ -197,6 +245,18 @@ function App() {
   const budgetStatus = formatBudgetSummary(budgetSnapshot)
   const dictationEnabled = speechConfig.dictationEnabled
   const externalDictationActive = shouldUseExternalDictation()
+
+  const xrSession = useSyncExternalStore(
+    (cb) => xrStore.subscribe(cb),
+    () => xrStore.getState().session ?? null,
+    () => null,
+  )
+  /**
+   * True only while an immersive WebXR session exists. `<XR>` must stay mounted whenever WebXR is supported
+   * so `xrStore` stays wired to `gl.xr` (otherwise Enter AR fails). When there is no session, we render
+   * flat `SimulatedHUD` inside `<XR>` instead of the passthrough HUD.
+   */
+  const webxrImmersive = arSupport.checked && arSupport.supported && xrSession != null
 
   useEffect(() => {
     const handleResize = () => setViewportWidth(window.innerWidth)
@@ -273,6 +333,10 @@ function App() {
   }, [])
 
   useEffect(() => {
+    if (phase === 'xr-exiting' || phase === 'ended') {
+      return
+    }
+
     // Disable speech for simulated (non-WebXR) experience
     if (arSupport.checked && !arSupport.supported && phase === 'active') {
       setSpeechSupported(true)
@@ -395,7 +459,8 @@ function App() {
     }
 
     rec.onend = () => {
-      if (phaseRef.current !== 'ended') {
+      const p = phaseRef.current
+      if (p !== 'ended' && p !== 'xr-exiting') {
         setMicStatus('starting')
         try {
           rec.start()
@@ -446,9 +511,13 @@ function App() {
   const handleEndSimulation = () => {
     try {
       recognitionRef.current?.stop()
-    } catch (_) {}
+    } catch {
+      /* ignore */
+    }
+    let budgetForStorage = budgetSnapshot
     if (dictationEnabled && sessionBudgetStartRef.current) {
-      setBudgetSnapshot(recordSpeechSession(sessionBudgetStartRef.current, Date.now()))
+      budgetForStorage = recordSpeechSession(sessionBudgetStartRef.current, Date.now())
+      setBudgetSnapshot(budgetForStorage)
       sessionBudgetStartRef.current = null
     }
     setMicStatus('idle')
@@ -457,40 +526,86 @@ function App() {
     const goToEnded = () => {
       if (finished) return
       finished = true
+      xrImmersiveExitBusyRef.current = false
       setPhase('ended')
     }
 
-    const session = xrStore.getState().session
+    const storeSession = xrStore.getState().session
+    const glSession = xrNativeSessionRef.current
+    const session = storeSession ?? glSession
+
+    /** Non-immersive: normal SPA transition to end screen. */
     if (session == null) {
       goToEnded()
       return
     }
 
-    /** Wait until @pmndrs/xr clears `session` after `end()`, then leave immersive mode and show transcript UI. */
-    let unsub = () => {}
-    unsub = xrStore.subscribe((state) => {
-      if (state.session == null) {
-        unsub()
-        goToEnded()
-      }
-    })
-
-    try {
-      void session.end()
-    } catch (_) {
-      unsub()
+    /**
+     * Immersive WebXR: **do not jump straight to `ended` and unmount `<Canvas>`** while the browser is still
+     * tearing down XR — on Quest that often leaves a black compositor “void”. We hold an `xr-exiting` phase (GL
+     * stays alive), wait for the native session `end` event, then defer `ended` slightly so presentation can reset.
+     */
+    if (!arSupport.checked || !arSupport.supported) {
       goToEnded()
       return
     }
 
-    window.setTimeout(() => {
-      unsub()
-      goToEnded()
-    }, 2500)
+    if (xrImmersiveExitBusyRef.current) return
+    xrImmersiveExitBusyRef.current = true
+
+    let failTimer = null
+    let domExitScheduled = false
+
+    const scheduleDomExit = () => {
+      if (domExitScheduled) return
+      domExitScheduled = true
+      if (failTimer != null) {
+        window.clearTimeout(failTimer)
+        failTimer = null
+      }
+      xrImmersiveExitBusyRef.current = false
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          window.setTimeout(() => {
+            setPhase('ended')
+          }, 320)
+        })
+      })
+    }
+
+    /** Prefer `gl.xr`’s session so `end()` matches Three’s WebXRManager. */
+    const nativeSession = glSession ?? storeSession
+
+    try {
+      nativeSession.addEventListener(
+        'end',
+        () => {
+          scheduleDomExit()
+        },
+        { once: true },
+      )
+    } catch {
+      /* ignore */
+    }
+
+    failTimer = window.setTimeout(() => {
+      scheduleDomExit()
+    }, 8000)
+
+    setPhase('xr-exiting')
+
+    try {
+      void nativeSession.end()
+    } catch {
+      /* ignore */
+    }
   }
 
   const simulatedActiveUi = arSupport.checked && !arSupport.supported && phase === 'active'
   const isWebXrDemoSetup = phase === 'onboarding' && onboardingStep === 3 && arSupport.checked && arSupport.supported
+  /** `xr-exiting` keeps `<Canvas>` mounted (not `ended`) until the XR session has fully ended. */
+  const showCanvas =
+    phase !== 'landing' && phase !== 'unsupported-mobile' && phase !== 'ended'
 
   return (
     <main
@@ -507,7 +622,12 @@ function App() {
         <UnsupportedMobilePage onGoBack={handleUnsupportedMobileGoBack} />
       )}
 
-      {phase !== 'ended' && phase !== 'landing' && phase !== 'unsupported-mobile' && arSupport.checked && arSupport.supported && (
+      {phase !== 'ended' &&
+        phase !== 'xr-exiting' &&
+        phase !== 'landing' &&
+        phase !== 'unsupported-mobile' &&
+        arSupport.checked &&
+        arSupport.supported && (
         <>
           <div className={`ar-controls ar-controls__primary${isWebXrDemoSetup ? ' ar-controls__primary--demo-setup' : ''}`}>
             <ARButton className="ar-toggle" store={xrStore}>
@@ -530,30 +650,76 @@ function App() {
         </>
       )}
 
-      {phase !== 'ended' && phase !== 'landing' && phase !== 'unsupported-mobile' && (
+      {phase === 'xr-exiting' && (
+        <div className="xr-exit-overlay" role="status" aria-live="polite">
+          <p className="xr-exit-overlay__title">Exiting AR…</p>
+          <p className="xr-exit-overlay__hint">Returning to the visit summary.</p>
+        </div>
+      )}
+
+      {showCanvas && (
         <Canvas camera={{ position: [0, 1.6, 0], fov: 60 }}>
           {arSupport.checked && arSupport.supported ? (
             <XR store={xrStore}>
-              {phase === 'onboarding' && (
-                <OnboardingHUD
-                  step={onboardingStep}
-                  onContinue={handleAdvanceOnboarding}
-                  onBeginVisit={handleBeginVisit}
-                />
-              )}
-              {phase === 'active' && (
-                <XRActiveFallback
-                  onEndSimulation={handleEndSimulation}
-                  patient={patientRecord}
-                  activeSpeaker={activeSpeaker}
-                  micStatus={micStatus}
-                  speechSupported={speechSupported}
-                  patientLiveCaption={patientLiveCaption}
-                  speechProviderLabel={speechProviderLabel}
-                  budgetStatus={budgetStatus}
-                  lastHeardCommand={lastHeardCommand}
-                  conversation={conversation}
-                />
+              <XrActiveSessionProbe sessionRef={xrNativeSessionRef} />
+              {webxrImmersive ? (
+                <>
+                  {phase === 'xr-exiting' && (
+                    <XRDomOverlay className="xr-exit-overlay xr-exit-overlay--dom">
+                      <p className="xr-exit-overlay__title">Exiting AR…</p>
+                      <p className="xr-exit-overlay__hint">Returning to the visit summary.</p>
+                    </XRDomOverlay>
+                  )}
+                  {phase === 'onboarding' && (
+                    <OnboardingHUD
+                      step={onboardingStep}
+                      onContinue={handleAdvanceOnboarding}
+                      onBeginVisit={handleBeginVisit}
+                    />
+                  )}
+                  {phase === 'active' && (
+                    <>
+                      <WebXrSessionEndBar onEndSimulation={handleEndSimulation} />
+                      <XRActiveFallback
+                        onEndSimulation={handleEndSimulation}
+                        patient={patientRecord}
+                        activeSpeaker={activeSpeaker}
+                        micStatus={micStatus}
+                        speechSupported={speechSupported}
+                        patientLiveCaption={patientLiveCaption}
+                        speechProviderLabel={speechProviderLabel}
+                        budgetStatus={budgetStatus}
+                        lastHeardCommand={lastHeardCommand}
+                        conversation={conversation}
+                      />
+                    </>
+                  )}
+                </>
+              ) : (
+                <>
+                  {phase === 'xr-exiting' ? null : (
+                    <>
+                      {phase === 'onboarding' && (
+                        <OnboardingHUD
+                          step={onboardingStep}
+                          onContinue={handleAdvanceOnboarding}
+                          onBeginVisit={handleBeginVisit}
+                        />
+                      )}
+                      {phase === 'active' && (
+                        <SimulatedHUD
+                          conversation={conversation}
+                          activeSpeaker={activeSpeaker}
+                          onEndSimulation={handleEndSimulation}
+                          patientLiveCaption={patientLiveCaption}
+                          speakerAttributionStatus={speakerAttributionStatus}
+                          speechProviderLabel={speechProviderLabel}
+                          budgetStatus={budgetStatus}
+                        />
+                      )}
+                    </>
+                  )}
+                </>
               )}
             </XR>
           ) : (
@@ -583,6 +749,7 @@ function App() {
 
       {phase === 'ended' && (
         <SessionEndScreen
+          key={sessionStartRef.current}
           conversation={conversation}
           vitals={vitals}
           sessionStartTime={sessionStartRef.current}

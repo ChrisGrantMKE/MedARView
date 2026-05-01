@@ -72,6 +72,82 @@
   outline-offset: 2px;
 }
 
+/* Fullscreen message while WebXR tears down — keeps GL mounted until session `end` + short delay. */
+.xr-exit-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1.5rem;
+  box-sizing: border-box;
+  background: #060d14;
+  color: #cfe8ff;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  text-align: center;
+}
+
+.xr-exit-overlay__title {
+  margin: 0;
+  font-size: clamp(1.15rem, 4vmin, 1.5rem);
+  font-weight: 600;
+}
+
+.xr-exit-overlay__hint {
+  margin: 0;
+  font-size: clamp(0.9rem, 3vmin, 1.05rem);
+  opacity: 0.85;
+}
+
+/* Portaled into WebXR dom-overlay root — fill overlay for in-headset visibility */
+.xr-exit-overlay--dom {
+  min-height: 100%;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* WebXR dom-overlay: DOM button so session.end() runs from a real click (reliable exit on headset browsers). */
+.xr-session-end-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 0.65rem 1rem calc(0.65rem + env(safe-area-inset-bottom, 0px));
+  box-sizing: border-box;
+  background: linear-gradient(to top, rgba(6, 13, 20, 0.94), rgba(6, 13, 20, 0.55));
+  z-index: 30;
+  pointer-events: auto;
+}
+
+.xr-session-end-bar__btn {
+  border: 1px solid rgba(255, 180, 190, 0.55);
+  background: rgba(92, 15, 26, 0.92);
+  color: #ffcdd3;
+  font-weight: 700;
+  font-size: clamp(0.95rem, 2.8vmin, 1.05rem);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  padding: 0.65rem 1.35rem;
+  cursor: pointer;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.xr-session-end-bar__btn:hover {
+  background: rgba(110, 22, 34, 0.96);
+}
+
+.xr-session-end-bar__btn:focus-visible {
+  outline: 2px solid #ffb4c0;
+  outline-offset: 2px;
+}
+
 .runtime-diagnostics {
   margin-top: 0;
   min-width: 0;

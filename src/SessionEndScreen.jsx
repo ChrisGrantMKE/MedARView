@@ -11,7 +11,7 @@ function SessionEndScreen({ conversation, vitals, sessionStartTime }) {
   const endedAtRef = useRef(Date.now())
 
   useEffect(() => {
-    const t = setTimeout(() => setScreenPhase('review'), 3200)
+    const t = setTimeout(() => setScreenPhase('review'), 5000)
     return () => clearTimeout(t)
   }, [])
 

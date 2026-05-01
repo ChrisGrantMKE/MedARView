@@ -259,6 +259,12 @@ function SimulatedHUD({
         </group>
 
         <group position={lowerRightLayout.endSimulation}>
+          <group
+            onClick={(e) => {
+              e.stopPropagation()
+              onEndSimulation()
+            }}
+          >
             <RoundedRect
               width={END_SIM_W}
               height={END_SIM_H}
@@ -269,14 +275,21 @@ function SimulatedHUD({
               borderOpacity={0.45}
               borderWidth={1}
               z={-0.002}
+            />
+            <Text
+              position={[0, 0, 0.003]}
+              anchorX="center"
+              anchorY="middle"
+              fontSize={END_SIM_FONT}
+              color="#ffcdd3"
               onClick={(e) => {
                 e.stopPropagation()
                 onEndSimulation()
               }}
-            />
-            <Text position={[0, 0, 0.003]} anchorX="center" anchorY="middle" fontSize={END_SIM_FONT} color="#ffcdd3">
+            >
               END SIMULATION
             </Text>
+          </group>
         </group>
       </>
     </group>
