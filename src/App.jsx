@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { ARButton, XR, XRDomOverlay, createXRStore } from '@react-three/xr'
 import { Text } from '@react-three/drei'
@@ -9,6 +9,8 @@ import SessionEndScreen from './SessionEndScreen'
 import LandingPage from './LandingPage'
 import SimulatedHUD from './SimulatedHUD'
 import UnsupportedMobilePage from './UnsupportedMobilePage'
+import RoundedRect from './hud/RoundedRect'
+import HudMenuPanel from './hud/HudMenuPanel'
 import { inferSpeaker } from './speakerAttribution'
 import { speechConfig, getSpeechProviderLabel, shouldUseExternalDictation } from './speechConfig'
 import { formatBudgetSummary, getSpeechBudgetSnapshot, recordSpeechSession } from './speechBudget'
@@ -37,7 +39,21 @@ const patientRecord = {
 }
 
 const clamp = (v, min, max) => Math.min(max, Math.max(min, v))
-const activeOffset = new Vector3(0, 0.05, -0.72)
+
+/** Same vertical tweak as `OnboardingHUD` step 3 (`DEMO_PANEL_H * 0.2`). */
+const DEMO_PANEL_H = 0.812
+/** Active visit HUD anchor matches demo-setup “ideal” frame in onboarding. */
+const activeOffset = new Vector3(0, 0.05 - DEMO_PANEL_H * 0.2, -0.72)
+
+function panelRadiusForSize(width, height, cap = 0.018) {
+  const half = Math.min(width, height) / 2
+  return Math.min(cap, Math.max(0.006, half * 0.22))
+}
+
+/** Match `SimulatedHUD` end control proportions for WebXR. */
+const WEBXR_END_W = 0.42 * 0.5
+const WEBXR_END_H = 0.068 * 0.5
+const WEBXR_END_FONT = 0.023 * 0.5
 
 /** Keeps `gl.xr.getSession()` in sync for exit — store session can lag vs Three's WebXRManager on some paths. */
 function XrActiveSessionProbe({ sessionRef }) {
@@ -61,145 +77,157 @@ function WebXrSessionEndBar({ onEndSimulation }) {
 
 function XRActiveFallback({
   onEndSimulation,
-  patient,
-  activeSpeaker,
   micStatus,
   speechSupported,
   patientLiveCaption,
   speechProviderLabel,
+  speakerAttributionStatus,
   budgetStatus,
   lastHeardCommand,
-  conversation,
 }) {
   const groupRef = useRef(null)
-  const menuRef = useRef(null)
   const { camera } = useThree()
+  const [selectedMenuId, setSelectedMenuId] = useState(null)
+  const [overlayEnabled, setOverlayEnabled] = useState(true)
+
+  const endSimR = useMemo(() => panelRadiusForSize(WEBXR_END_W, WEBXR_END_H, 0.014), [])
+  const dictW = 0.34
+  const dictH = 0.26
+  const dictR = useMemo(() => panelRadiusForSize(0.34, 0.26), [])
+  const panelColor = '#091522'
+
+  /** Same left placement math as `SimulatedHUD` (viewport quarter), using this HUD’s Z depth. */
+  const menuLayout = useMemo(() => {
+    const depth = Math.abs(activeOffset.z)
+    const fovRad = (camera.fov * Math.PI) / 180
+    const visibleHeight = 2 * Math.tan(fovRad / 2) * depth
+    const visibleWidth = visibleHeight * camera.aspect
+
+    const baseWidth = 0.3
+    const minWidth = 0.15
+    const quarterViewport = visibleWidth * 0.25
+    const easedWidth =
+      quarterViewport >= baseWidth
+        ? baseWidth
+        : Math.max(minWidth, baseWidth - (baseWidth - quarterViewport) * 0.5)
+    const scale = easedWidth / baseWidth
+
+    const leftPadding = 0.02
+    const topPadding = 0.06
+    const xLeft = -visibleWidth / 2 + leftPadding
+    const yTop = visibleHeight / 2 - topPadding
+    const panelHalfWidth = (baseWidth * scale) / 2
+    const panelTopToOrigin = 0.34 * scale
+
+    return {
+      scale,
+      position: [xLeft + panelHalfWidth, yTop - panelTopToOrigin, 0],
+    }
+  }, [camera.aspect, camera.fov])
 
   useFrame(() => {
     if (!groupRef.current) return
     const worldOffset = activeOffset.clone().applyQuaternion(camera.quaternion)
     groupRef.current.position.copy(camera.position).add(worldOffset)
     groupRef.current.quaternion.copy(camera.quaternion)
-
-    if (!menuRef.current) return
-    const menuOffset = new Vector3(-0.46, 0.05, -0.7).applyQuaternion(camera.quaternion)
-    menuRef.current.position.copy(camera.position).add(menuOffset)
-    menuRef.current.quaternion.copy(camera.quaternion)
   })
 
-  const recentConvo = conversation.slice(-2)
+  const endVisit = (e) => {
+    e.stopPropagation()
+    onEndSimulation()
+  }
+
+  /** Lower-right dictation stack. */
+  const dictPos = [0.31, -0.165, 0]
+  /** Center bottom of the same ideal frame as simulated HUD end bar. */
+  const endPos = [0, -0.288, 0]
+
+  const lx = -dictW / 2 + 0.02
+  const ty = dictH / 2 - 0.02
 
   return (
-    <>
-      {/* Left standalone menu panel */}
-      <group ref={menuRef}>
-        <mesh position={[0, 0, -0.002]}>
-          <planeGeometry args={[0.28, 0.28]} />
-          <meshBasicMaterial color="#091522" transparent opacity={0.9} depthWrite={false} />
-        </mesh>
-        {[
-          ['Patient Data', true, 0.09],
-          ['Test Results', false, 0.045],
-          ['Allergies', false, 0.0],
-          ['Heart Rate', false, -0.045],
-          ['Blood Pressure', false, -0.09],
-        ].map(([label, selected, y]) => (
-          <group key={label} position={[0, y, 0]}>
-            <mesh>
-              <planeGeometry args={[0.24, 0.036]} />
-              <meshBasicMaterial color={selected ? '#accbff' : '#0f2134'} transparent opacity={0.95} depthWrite={false} />
-            </mesh>
-            <Text position={[0, 0, 0.002]} anchorX="center" anchorY="middle" fontSize={0.015} color={selected ? '#0b1624' : '#ffffff'}>
-              {label}
-            </Text>
-          </group>
-        ))}
+    <group ref={groupRef}>
+      <Suspense fallback={null}>
+        <HudMenuPanel
+          position={menuLayout.position}
+          scale={menuLayout.scale}
+          overlayEnabled={overlayEnabled}
+          onSetOverlay={setOverlayEnabled}
+          selectedMenuId={selectedMenuId}
+          onToggleItem={(id) => setSelectedMenuId((prev) => (prev === id ? null : id))}
+        />
+      </Suspense>
+
+      {/* Lower-right: dictation-only panel */}
+      <group position={dictPos}>
+        <RoundedRect
+          width={dictW}
+          height={dictH}
+          radius={dictR}
+          color={panelColor}
+          opacity={0.72}
+          borderColor="#5a7a9a"
+          borderOpacity={0.35}
+          borderWidth={1}
+          z={-0.002}
+        />
+        <Text position={[lx, ty, 0.002]} anchorX="left" anchorY="top" fontSize={0.017} color="#cfe8ff">
+          DICTATION
+        </Text>
+        <Text position={[lx, ty - 0.03, 0.002]} anchorX="left" anchorY="top" fontSize={0.011} color="#9dbfe8">
+          {`Mic: ${speechSupported ? micStatus : 'unsupported'}`}
+        </Text>
+        <Text position={[lx, ty - 0.05, 0.002]} anchorX="left" anchorY="top" fontSize={0.01} color="#8af3d1" maxWidth={dictW - 0.04}>
+          {speakerAttributionStatus || 'Attribution: --'}
+        </Text>
+        <Text position={[lx, ty - 0.072, 0.002]} anchorX="left" anchorY="top" fontSize={0.01} color="#6bb5ff" maxWidth={dictW - 0.04}>
+          {speechProviderLabel ? `Provider: ${speechProviderLabel}` : 'Provider: --'}
+        </Text>
+        <Text position={[lx, ty - 0.09, 0.002]} anchorX="left" anchorY="top" fontSize={0.01} color="#6bb5ff" maxWidth={dictW - 0.04}>
+          {budgetStatus ? `Budget: ${budgetStatus}` : 'Budget: --'}
+        </Text>
+        <Text position={[lx, ty - 0.108, 0.002]} anchorX="left" anchorY="top" fontSize={0.01} color="#9dbfe8" maxWidth={dictW - 0.04}>
+          {lastHeardCommand ? `Heard: ${lastHeardCommand}` : 'Heard: --'}
+        </Text>
+        <Text
+          position={[lx, ty - 0.132, 0.002]}
+          anchorX="left"
+          anchorY="top"
+          fontSize={0.012}
+          color="#fff6de"
+          maxWidth={dictW - 0.04}
+          textAlign="left"
+          lineHeight={1.25}
+        >
+          {patientLiveCaption || 'Awaiting patient speech...'}
+        </Text>
       </group>
 
-      {/* Center-right info panel */}
-      <group ref={groupRef}>
-      <mesh position={[0, 0, -0.002]}>
-        <planeGeometry args={[0.68, 0.36]} />
-        <meshBasicMaterial color="#091522" transparent opacity={0.86} depthWrite={false} />
-      </mesh>
-      <Text position={[0, 0.145, 0.002]} anchorX="center" anchorY="middle" fontSize={0.029} color="#cfe8ff">
-        MEDARVIEW HUD
-      </Text>
-      {recentConvo.length === 0 ? (
-        <Text position={[0, -0.078, 0.002]} anchorX="center" anchorY="middle" fontSize={0.013} color="#3a7aaa">
-          Waiting for conversation...
-        </Text>
-      ) : (
-        recentConvo.map((entry, index) => (
-          <Text
-            key={entry.id}
-            position={[0, -0.072 - index * 0.02, 0.002]}
-            anchorX="center"
-            anchorY="middle"
-            fontSize={0.012}
-            color="#e8f4ff"
-            maxWidth={0.68}
-            textAlign="center"
-          >
-            {`${entry.speaker}: ${entry.text.slice(0, 80)}`}
-          </Text>
-        ))
-      )}
-
-      {/* Right: Patient detail card */}
-      <mesh position={[0.06, -0.006, -0.001]}>
-        <planeGeometry args={[0.30, 0.22]} />
-        <meshBasicMaterial color="#000000" transparent opacity={0.9} depthWrite={false} />
-      </mesh>
-      <Text position={[0.06, 0.085, 0.002]} anchorX="center" anchorY="middle" fontSize={0.017} color="#ffffff">
-        {`${patient.name} (${patient.age})`}
-      </Text>
-      <Text position={[0.06, 0.058, 0.002]} anchorX="center" anchorY="middle" fontSize={0.013} color="#ffffff">
-        {`Active: ${activeSpeaker}`}
-      </Text>
-      <Text position={[0.06, 0.033, 0.002]} anchorX="center" anchorY="middle" fontSize={0.012} color="#9dbfe8">
-        {`Mic: ${speechSupported ? micStatus : 'unsupported'}`}
-      </Text>
-      <Text position={[0.06, 0.01, 0.002]} anchorX="center" anchorY="middle" fontSize={0.0115} color="#6bb5ff" maxWidth={0.27} textAlign="center">
-        {speechProviderLabel ? `Provider: ${speechProviderLabel}` : 'Provider: --'}
-      </Text>
-      <Text position={[0.06, -0.012, 0.002]} anchorX="center" anchorY="middle" fontSize={0.0115} color="#6bb5ff" maxWidth={0.27} textAlign="center">
-        {budgetStatus ? `Budget: ${budgetStatus}` : 'Budget: --'}
-      </Text>
-      <Text position={[0.06, -0.034, 0.002]} anchorX="center" anchorY="middle" fontSize={0.0115} color="#9dbfe8" maxWidth={0.27} textAlign="center">
-        {lastHeardCommand ? `Heard: ${lastHeardCommand}` : 'Heard: --'}
-      </Text>
-      <Text position={[0.06, -0.062, 0.002]} anchorX="center" anchorY="middle" fontSize={0.0125} color="#fff6de" maxWidth={0.27} textAlign="center">
-        {patientLiveCaption || 'Awaiting patient speech...'}
-      </Text>
-
-      <group
-        position={[0, -0.146, 0]}
-        onClick={(e) => {
-          e.stopPropagation()
-          onEndSimulation()
-        }}
-      >
-        <mesh>
-          <planeGeometry args={[0.28, 0.052]} />
-          <meshBasicMaterial color="#5c0f1a" transparent opacity={0.9} />
-        </mesh>
+      {/* Center bottom: compact rounded end control (matches simulated HUD) */}
+      <group position={endPos} onClick={endVisit}>
+        <RoundedRect
+          width={WEBXR_END_W}
+          height={WEBXR_END_H}
+          radius={endSimR}
+          color="#5c0f1a"
+          opacity={0.9}
+          borderColor="#ff8a95"
+          borderOpacity={0.45}
+          borderWidth={1}
+          z={-0.002}
+        />
         <Text
-          position={[0, 0, 0.002]}
+          position={[0, 0, 0.003]}
           anchorX="center"
           anchorY="middle"
-          fontSize={0.02}
+          fontSize={WEBXR_END_FONT}
           color="#ffcdd3"
-          onClick={(e) => {
-            e.stopPropagation()
-            onEndSimulation()
-          }}
+          onClick={endVisit}
         >
           END SIMULATION
         </Text>
       </group>
-      </group>
-    </>
+    </group>
   )
 }
 
@@ -682,15 +710,13 @@ function App() {
                       <WebXrSessionEndBar onEndSimulation={handleEndSimulation} />
                       <XRActiveFallback
                         onEndSimulation={handleEndSimulation}
-                        patient={patientRecord}
-                        activeSpeaker={activeSpeaker}
                         micStatus={micStatus}
                         speechSupported={speechSupported}
                         patientLiveCaption={patientLiveCaption}
                         speechProviderLabel={speechProviderLabel}
+                        speakerAttributionStatus={speakerAttributionStatus}
                         budgetStatus={budgetStatus}
                         lastHeardCommand={lastHeardCommand}
-                        conversation={conversation}
                       />
                     </>
                   )}
