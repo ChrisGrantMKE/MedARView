@@ -31,33 +31,7 @@ const patientRecord = {
 }
 
 const clamp = (v, min, max) => Math.min(max, Math.max(min, v))
-const probeOffset = new Vector3(0, 0.2, -0.7)
 const activeOffset = new Vector3(0, 0.05, -0.72)
-
-function XRPhaseProbe({ phase }) {
-  const groupRef = useRef(null)
-  const { camera } = useThree()
-
-  useFrame(() => {
-    if (!groupRef.current) return
-    const worldOffset = probeOffset.clone().applyQuaternion(camera.quaternion)
-    groupRef.current.position.copy(camera.position).add(worldOffset)
-    groupRef.current.quaternion.copy(camera.quaternion)
-  })
-
-  const color = phase === 'active' ? '#ff2f7a' : '#0a6bc2'
-  return (
-    <group ref={groupRef}>
-      <mesh>
-        <planeGeometry args={[0.34, 0.08]} />
-        <meshBasicMaterial color={color} transparent opacity={0.94} depthWrite={false} />
-      </mesh>
-      <Text position={[0, 0, 0.002]} anchorX="center" anchorY="middle" fontSize={0.03} color="#ffffff">
-        {`PHASE: ${phase.toUpperCase()}`}
-      </Text>
-    </group>
-  )
-}
 
 function XRActiveFallback({
   onEndSimulation,
@@ -470,21 +444,60 @@ function App() {
   }
 
   const handleEndSimulation = () => {
-    try { recognitionRef.current?.stop() } catch (_) {}
+    try {
+      recognitionRef.current?.stop()
+    } catch (_) {}
     if (dictationEnabled && sessionBudgetStartRef.current) {
       setBudgetSnapshot(recordSpeechSession(sessionBudgetStartRef.current, Date.now()))
       sessionBudgetStartRef.current = null
     }
     setMicStatus('idle')
-    setPhase('ended')
+
+    let finished = false
+    const goToEnded = () => {
+      if (finished) return
+      finished = true
+      setPhase('ended')
+    }
+
+    const session = xrStore.getState().session
+    if (session == null) {
+      goToEnded()
+      return
+    }
+
+    /** Wait until @pmndrs/xr clears `session` after `end()`, then leave immersive mode and show transcript UI. */
+    let unsub = () => {}
+    unsub = xrStore.subscribe((state) => {
+      if (state.session == null) {
+        unsub()
+        goToEnded()
+      }
+    })
+
+    try {
+      void session.end()
+    } catch (_) {
+      unsub()
+      goToEnded()
+      return
+    }
+
+    window.setTimeout(() => {
+      unsub()
+      goToEnded()
+    }, 2500)
   }
 
   const simulatedActiveUi = arSupport.checked && !arSupport.supported && phase === 'active'
+  const isWebXrDemoSetup = phase === 'onboarding' && onboardingStep === 3 && arSupport.checked && arSupport.supported
 
   return (
     <main
       className={`app-shell${simulatedActiveUi ? ' app-shell--simulated' : ''}${
-        phase === 'landing' || phase === 'unsupported-mobile' ? ' app-shell--landing' : ''
+        phase === 'landing' || phase === 'unsupported-mobile' || phase === 'ended'
+          ? ' app-shell--landing'
+          : ''
       }`}
     >
       {phase === 'landing' && (
@@ -495,15 +508,17 @@ function App() {
       )}
 
       {phase !== 'ended' && phase !== 'landing' && phase !== 'unsupported-mobile' && arSupport.checked && arSupport.supported && (
-        <div className="ar-controls">
-          <ARButton className="ar-toggle" store={xrStore}>
-            {(status) => {
-              if (status === 'unsupported') return 'AR Unsupported'
-              if (status === 'entered') return 'Exit AR'
-              return 'Enter Medical AR HUD'
-            }}
-          </ARButton>
-          <div className="runtime-diagnostics" role="status" aria-live="polite">
+        <>
+          <div className={`ar-controls ar-controls__primary${isWebXrDemoSetup ? ' ar-controls__primary--demo-setup' : ''}`}>
+            <ARButton className="ar-toggle" store={xrStore}>
+              {(status) => {
+                if (status === 'unsupported') return 'AR Unsupported'
+                if (status === 'entered') return 'Exit AR'
+                return 'Enter Medical AR HUD'
+              }}
+            </ARButton>
+          </div>
+          <div className="ar-controls ar-controls__diagnostics runtime-diagnostics" role="status" aria-live="polite">
             <div>{`AR: ${arSupport.reason}`}</div>
             <div>{`Mic: ${speechSupported ? `${micStatus} | permission: ${micPermission}` : 'unsupported'}`}</div>
             <div>{`Dictation enabled: ${dictationEnabled ? 'yes' : 'no (UI-only mode)'}`}</div>
@@ -512,24 +527,18 @@ function App() {
             <div>{`Speech budget: ${budgetStatus}`}</div>
             <div>{`Dictation API: ${speechConfig.dictationApiUrl || 'not configured'}`}</div>
           </div>
-        </div>
+        </>
       )}
 
       {phase !== 'ended' && phase !== 'landing' && phase !== 'unsupported-mobile' && (
         <Canvas camera={{ position: [0, 1.6, 0], fov: 60 }}>
           {arSupport.checked && arSupport.supported ? (
             <XR store={xrStore}>
-              {(phase === 'onboarding' || phase === 'active') && <XRPhaseProbe phase={phase} />}
               {phase === 'onboarding' && (
                 <OnboardingHUD
                   step={onboardingStep}
                   onContinue={handleAdvanceOnboarding}
                   onBeginVisit={handleBeginVisit}
-                  speechSupported={speechSupported}
-                  micStatus={micStatus}
-                  lastHeardCommand={lastHeardCommand}
-                  speechProviderLabel={speechProviderLabel}
-                  budgetStatus={budgetStatus}
                 />
               )}
               {phase === 'active' && (
@@ -554,11 +563,6 @@ function App() {
                   step={onboardingStep}
                   onContinue={handleAdvanceOnboarding}
                   onBeginVisit={handleBeginVisit}
-                  speechSupported={speechSupported}
-                  micStatus={micStatus}
-                  lastHeardCommand={lastHeardCommand}
-                  speechProviderLabel={speechProviderLabel}
-                  budgetStatus={budgetStatus}
                 />
               )}
               {phase === 'active' && (

@@ -5,6 +5,9 @@ import { Vector3 } from 'three'
 import seatedOutlineUrl from './assets/Seated.svg'
 
 const obOffset = new Vector3(0, 0.05, -0.72)
+/** Demo setup (step 3): lower HUD ~20% of panel height so it sits less “in the air”. */
+const DEMO_PANEL_H = 0.812
+const obOffsetDemoSetup = new Vector3(0, 0.05 - DEMO_PANEL_H * 0.2, -0.72)
 const panelDark = '#091522'
 const btnDefault = '#0e4d7a'
 const btnHover = '#1a6fa8'
@@ -34,7 +37,7 @@ const STEPS = [
   },
 ]
 
-function OnboardingHUD({ step, onContinue, onBeginVisit, speechSupported, micStatus, lastHeardCommand, speechProviderLabel, budgetStatus }) {
+function OnboardingHUD({ step, onContinue, onBeginVisit }) {
   const groupRef = useRef(null)
   const { camera } = useThree()
   const [hovering, setHovering] = useState(false)
@@ -42,7 +45,8 @@ function OnboardingHUD({ step, onContinue, onBeginVisit, speechSupported, micSta
 
   useFrame(() => {
     if (!groupRef.current) return
-    const worldOffset = obOffset.clone().applyQuaternion(camera.quaternion)
+    const offset = step >= 3 ? obOffsetDemoSetup : obOffset
+    const worldOffset = offset.clone().applyQuaternion(camera.quaternion)
     groupRef.current.position.copy(camera.position).add(worldOffset)
     groupRef.current.quaternion.copy(camera.quaternion)
   })
@@ -105,29 +109,21 @@ function OnboardingHUD({ step, onContinue, onBeginVisit, speechSupported, micSta
     )
   }
 
-  // ── Step 3: Demo setup ────────────────────────────────────────────
+  // ── Step 3: Demo setup (panel + children centered on x=0 so 2D canvas + XR view aren’t biased right)
   return (
     <group ref={groupRef}>
-      {/* Full background - 40% larger */}
-      <mesh position={[0.05, 0, -0.002]}>
+      <mesh position={[0, 0, -0.002]}>
         <planeGeometry args={[0.98, 0.812]} />
         <meshBasicMaterial color={panelDark} transparent opacity={0.72} />
       </mesh>
 
-      {/* ── Left Pane: instructions with margin ── */}
-      <Text
-        position={[-0.24, 0.35, 0]}
-        anchorX="center"
-        anchorY="middle"
-        fontSize={0.026}
-        color="#cfe8ff"
-      >
+      <Text position={[0, 0.36, 0]} anchorX="center" anchorY="middle" fontSize={0.026} color="#cfe8ff">
         DEMO SETUP
       </Text>
 
       <Text
-        position={[-0.24, 0.08, 0]}
-        anchorX="center"
+        position={[-0.29, 0.06, 0]}
+        anchorX="left"
         anchorY="middle"
         fontSize={0.019}
         maxWidth={0.38}
@@ -138,89 +134,28 @@ function OnboardingHUD({ step, onContinue, onBeginVisit, speechSupported, micSta
         {`This simulation requires 2 people.\n\nImagine you have entered the visit room wearing your glasses and the patient is having vitals taken.\n\nWith a colleague sitting across from you, say out loud:\n\n"MED VIEW Begin Visit"`}
       </Text>
 
-      {/* Listening indicator */}
-      <Text
-        position={[-0.24, -0.28, 0]}
-        anchorX="center"
-        anchorY="middle"
-        fontSize={0.018}
-        color="#6bb5ff"
-      >
-        {speechSupported ? `[ MIC ] ${micStatus}` : '[ MIC ] SpeechRecognition unsupported'}
-      </Text>
-
-      <Text
-        position={[-0.24, -0.31, 0]}
-        anchorX="center"
-        anchorY="middle"
-        fontSize={0.012}
-        color="#3a7aaa"
-        maxWidth={0.37}
-        textAlign="center"
-      >
-        {lastHeardCommand ? `Last heard: ${lastHeardCommand}` : 'Last heard: --'}
-      </Text>
-
-      <Text
-        position={[-0.24, -0.33, 0]}
-        anchorX="center"
-        anchorY="middle"
-        fontSize={0.012}
-        color="#3a7aaa"
-        maxWidth={0.37}
-        textAlign="center"
-      >
-        {speechProviderLabel ? `Dictation provider: ${speechProviderLabel}` : 'Dictation provider: --'}
-      </Text>
-
-      <Text
-        position={[-0.24, -0.35, 0]}
-        anchorX="center"
-        anchorY="middle"
-        fontSize={0.012}
-        color="#3a7aaa"
-        maxWidth={0.37}
-        textAlign="center"
-      >
-        {budgetStatus ? `Budget: ${budgetStatus}` : 'Budget: --'}
-      </Text>
-
-      {/* ── Right Pane: patient silhouette and green button ── */}
-      <mesh position={[0.34, 0.04, -0.003]}>
+      <mesh position={[0.29, 0.04, -0.003]}>
         <planeGeometry args={[0.22, 0.46]} />
         <meshBasicMaterial color="#050f18" transparent opacity={0.55} />
       </mesh>
 
       <Image
         url={seatedOutlineUrl}
-        position={[0.34, 0.06, 0]}
+        position={[0.29, 0.06, 0]}
         scale={[0.135, 0.26, 1]}
         transparent
         opacity={0.9}
       />
 
-      <Text
-        position={[0.34, -0.215, 0]}
-        anchorX="center"
-        anchorY="middle"
-        fontSize={0.019}
-        color="#6bb5ff"
-      >
+      <Text position={[0.29, -0.215, 0]} anchorX="center" anchorY="middle" fontSize={0.019} color="#6bb5ff">
         PATIENT
       </Text>
-      <Text
-        position={[0.34, -0.238, 0]}
-        anchorX="center"
-        anchorY="middle"
-        fontSize={0.014}
-        color="#3a7aaa"
-      >
+      <Text position={[0.29, -0.238, 0]} anchorX="center" anchorY="middle" fontSize={0.014} color="#3a7aaa">
         (~8 ft / 2.4 m away)
       </Text>
 
-      {/* Green button under the outline */}
       <mesh
-        position={[0.34, -0.28, 0]}
+        position={[0.29, -0.28, 0]}
         onClick={onBeginVisit}
         onPointerOver={() => setHoverBegin(true)}
         onPointerOut={() => setHoverBegin(false)}
@@ -228,7 +163,7 @@ function OnboardingHUD({ step, onContinue, onBeginVisit, speechSupported, micSta
         <planeGeometry args={[0.22, 0.04]} />
         <meshBasicMaterial color={hoverBegin ? btnGreenHover : btnGreen} transparent opacity={0.88} />
       </mesh>
-      <Text position={[0.34, -0.28, 0.002]} anchorX="center" anchorY="middle" fontSize={0.017} color="#a8f5d0">
+      <Text position={[0.29, -0.28, 0.002]} anchorX="center" anchorY="middle" fontSize={0.017} color="#a8f5d0">
         TAP TO BEGIN VISIT
       </Text>
     </group>

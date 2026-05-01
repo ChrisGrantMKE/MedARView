@@ -18,12 +18,36 @@
   background: #060d14;
 }
 
-.ar-controls {
+/* WebXR DOM overlay: AR entry button (top / demo-setup offset) */
+.ar-controls__primary {
   position: absolute;
   top: 1rem;
   left: 50%;
   z-index: 10;
   transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+/* Sit under centered “DEMO SETUP” in headset on final onboarding step */
+.ar-controls__primary--demo-setup {
+  top: clamp(5rem, 12vh, 9rem);
+}
+
+/* Runtime lines: lower-left (replaces former 3D mic block on demo setup) */
+.ar-controls__diagnostics {
+  position: absolute;
+  left: 1rem;
+  bottom: 2.25rem;
+  top: auto;
+  right: auto;
+  transform: none;
+  z-index: 10;
+  margin-top: 0;
+  max-width: min(420px, calc(100vw - 2.25rem));
+  min-width: 0;
 }
 
 .ar-toggle {
@@ -49,9 +73,9 @@
 }
 
 .runtime-diagnostics {
-  margin-top: 0.5rem;
-  min-width: 380px;
-  max-width: 72vw;
+  margin-top: 0;
+  min-width: 0;
+  max-width: 100%;
   border: 1px solid rgba(100, 180, 255, 0.35);
   background: rgba(8, 20, 34, 0.72);
   color: #cfe8ff;
