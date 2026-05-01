@@ -29,6 +29,7 @@ export default function RoundedRect({
   borderOpacity = 1,
   borderWidth = 2,
   z = 0,
+  depthTest = true,
   ...meshProps
 }) {
   const shape = useMemo(() => buildRoundedShape(width, height, radius), [width, height, radius])
@@ -41,7 +42,13 @@ export default function RoundedRect({
     <group position={[0, 0, z]}>
       <mesh {...meshProps}>
         <shapeGeometry args={[shape]} />
-        <meshBasicMaterial color={color} transparent opacity={opacity} depthWrite={false} />
+        <meshBasicMaterial
+          color={color}
+          transparent
+          opacity={opacity}
+          depthWrite={false}
+          depthTest={depthTest}
+        />
       </mesh>
       {borderColor ? (
         <Line

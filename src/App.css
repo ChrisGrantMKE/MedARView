@@ -148,6 +148,60 @@
   outline-offset: 2px;
 }
 
+/* Hidden Canvas on landing: wires WebXRManager so enterAR() works from the landing CTA */
+.landing-xr-bootstrap {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0;
+}
+
+/* Minimal AR debug: single centered DOM overlay control (passthrough visible around it) */
+.ar-minimal-exit-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  min-height: 100%;
+  width: 100%;
+  box-sizing: border-box;
+  pointer-events: auto;
+  /* Slight dim so the control reads on bright passthrough; keep center open for real-world view */
+  background: radial-gradient(
+    ellipse 85% 70% at 50% 50%,
+    rgba(6, 13, 20, 0.5) 0%,
+    rgba(6, 13, 20, 0.12) 55%,
+    transparent 75%
+  );
+  padding: 1rem;
+}
+
+.ar-minimal-exit-overlay__btn {
+  border: 2px solid rgba(172, 203, 255, 0.65);
+  background: rgba(8, 20, 34, 0.88);
+  color: #f3f7fc;
+  font-weight: 700;
+  font-size: clamp(1.15rem, 4.2vmin, 1.45rem);
+  letter-spacing: 0.03em;
+  border-radius: 999px;
+  padding: 1rem 1.75rem;
+  cursor: pointer;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+}
+
+.ar-minimal-exit-overlay__btn:hover {
+  background: rgba(11, 27, 46, 0.94);
+}
+
+.ar-minimal-exit-overlay__btn:focus-visible {
+  outline: 2px solid #9cd7ff;
+  outline-offset: 3px;
+}
+
 .runtime-diagnostics {
   margin-top: 0;
   min-width: 0;

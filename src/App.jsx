@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { ARButton, XR, XRDomOverlay, createXRStore } from '@react-three/xr'
 import { Text } from '@react-three/drei'
@@ -27,6 +27,20 @@ const xrStore = createXRStore({
   /** `layers` off avoids projection-layer teardown bugs on some Meta builds that block `session.end` / reload. */
   layers: false,
   domOverlay: true,
+  /**
+   * Default XR ray pointers use `minDistance: 0.2` (m). Hits closer than that are dropped — common with
+   * head-locked panels when aiming from the waist/chest. Allow near-field UI for minimal AR + HUD.
+   */
+  controller: {
+    rayPointer: { minDistance: 0 },
+  },
+  hand: {
+    rayPointer: {
+      minDistance: 0,
+      /** Default hand ray visual is 0.2 m; extend so the aim line reaches arm’s-length UI. */
+      rayModel: { maxLength: 3 },
+    },
+  },
 })
 
 const patientRecord = {
@@ -62,6 +76,70 @@ function XrActiveSessionProbe({ sessionRef }) {
     sessionRef.current = gl.xr.getSession() ?? null
   })
   return null
+}
+
+/** Lets the landing page enable “Enter AR mode” only after `<XR>` has wired the WebGL XR manager. */
+function LandingXrGlReadyProbe({ onReady }) {
+  useEffect(() => {
+    onReady(true)
+    return () => onReady(false)
+  }, [onReady])
+  return null
+}
+
+/** World-anchored control for minimal AR: many runtimes don’t show `XRDomOverlay` in-headset; 3D UI is reliable. */
+const AR_MINIMAL_EXIT_W = 0.52
+const AR_MINIMAL_EXIT_H = 0.11
+function ArMinimalExitButton3D({ onExit }) {
+  const groupRef = useRef(null)
+  const offset = useMemo(() => new Vector3(0, -0.06, -0.68), [])
+  const { camera } = useThree()
+  const fillR = useMemo(() => panelRadiusForSize(AR_MINIMAL_EXIT_W, AR_MINIMAL_EXIT_H, 0.018), [])
+
+  useFrame(() => {
+    if (!groupRef.current) return
+    const worldOffset = offset.clone().applyQuaternion(camera.quaternion)
+    groupRef.current.position.copy(camera.position).add(worldOffset)
+    groupRef.current.quaternion.copy(camera.quaternion)
+  })
+
+  const pick = (e) => {
+    e.stopPropagation()
+    onExit()
+  }
+
+  return (
+    <group ref={groupRef} renderOrder={1000}>
+      {/* Handlers on the mesh (not only the parent group) so @pmndrs pointer-events ray hits register. */}
+      <RoundedRect
+        width={AR_MINIMAL_EXIT_W}
+        height={AR_MINIMAL_EXIT_H}
+        radius={fillR}
+        color="#132a45"
+        opacity={0.96}
+        borderColor="#7eb8ff"
+        borderOpacity={0.55}
+        borderWidth={2}
+        z={-0.002}
+        depthTest={false}
+        pointerEventsOrder={1000}
+        onClick={pick}
+        onPointerDown={pick}
+      />
+      <Text
+        position={[0, 0, 0.004]}
+        anchorX="center"
+        anchorY="middle"
+        fontSize={0.03}
+        color="#f3f7fc"
+        pointerEventsOrder={1000}
+        onClick={pick}
+        onPointerDown={pick}
+      >
+        Exit AR mode
+      </Text>
+    </group>
+  )
 }
 
 /** Dom-overlay control so `session.end()` runs from a real DOM tap where the browser requires it. */
@@ -247,6 +325,7 @@ function App() {
   const [patientLiveCaption, setPatientLiveCaption] = useState('Awaiting patient speech...')
   const [speakerAttributionStatus, setSpeakerAttributionStatus] = useState('Awaiting speech...')
   const [budgetSnapshot, setBudgetSnapshot] = useState(() => getSpeechBudgetSnapshot())
+  const [landingXrGlReady, setLandingXrGlReady] = useState(false)
   const [arSupport, setArSupport] = useState({
     checked: false,
     supported: false,
@@ -258,6 +337,8 @@ function App() {
   const xrNativeSessionRef = useRef(null)
   /** Prevents double immersive-exit wiring (two subscribers / timers). */
   const xrImmersiveExitBusyRef = useRef(false)
+  /** Set with `setXrExitReturnsToLanding` before `xr-exiting` so overlays know landing vs visit summary. */
+  const [xrExitReturnsToLanding, setXrExitReturnsToLanding] = useState(false)
   const phaseRef = useRef(phase)
   const stepRef = useRef(2)
   const speakerRef = useRef('Doctor')
@@ -265,6 +346,10 @@ function App() {
   const recognitionRef = useRef(null)
 
   useEffect(() => { phaseRef.current = phase }, [phase])
+
+  const onLandingXrGlReady = useCallback((ready) => {
+    setLandingXrGlReady(ready)
+  }, [])
   useEffect(() => { stepRef.current = onboardingStep }, [onboardingStep])
   useEffect(() => { speakerRef.current = activeSpeaker }, [activeSpeaker])
   useEffect(() => { conversationRef.current = conversation }, [conversation])
@@ -285,6 +370,13 @@ function App() {
    * flat `SimulatedHUD` inside `<XR>` instead of the passthrough HUD.
    */
   const webxrImmersive = arSupport.checked && arSupport.supported && xrSession != null
+  /**
+   * `xrStore.session` can lag the native session by a tick after `enterAR()` resolves, so `webxrImmersive`
+   * stays false while `phase === 'ar-minimal'` — and the exit `XRDomOverlay` never mounts. Same class of bug
+   * on `xr-exiting` if the store clears before the phase flips. Force the immersive DOM-overlay branch.
+   */
+  const webxrImmersiveUi =
+    webxrImmersive || phase === 'ar-minimal' || phase === 'xr-exiting'
 
   useEffect(() => {
     const handleResize = () => setViewportWidth(window.innerWidth)
@@ -341,6 +433,22 @@ function App() {
     setPhase('onboarding')
   }
 
+  const handleEnterArMinimal = () => {
+    if (viewportWidth < 690) {
+      setPhase('unsupported-mobile')
+      return
+    }
+    if (!arSupport.checked || !arSupport.supported || !landingXrGlReady) return
+    void xrStore
+      .enterAR()
+      .then(() => {
+        setPhase('ar-minimal')
+      })
+      .catch((err) => {
+        console.warn('enterAR (minimal) failed:', err)
+      })
+  }
+
   const handleUnsupportedMobileGoBack = () => {
     if (typeof window !== 'undefined' && window.history.length > 1) {
       window.history.back()
@@ -361,7 +469,7 @@ function App() {
   }, [])
 
   useEffect(() => {
-    if (phase === 'xr-exiting' || phase === 'ended') {
+    if (phase === 'xr-exiting' || phase === 'ended' || phase === 'ar-minimal') {
       return
     }
 
@@ -620,6 +728,87 @@ function App() {
       scheduleDomExit()
     }, 8000)
 
+    setXrExitReturnsToLanding(false)
+    setPhase('xr-exiting')
+
+    try {
+      void nativeSession.end()
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const handleExitMinimalAr = () => {
+    try {
+      recognitionRef.current?.stop()
+    } catch {
+      /* ignore */
+    }
+
+    let finished = false
+    const goToLanding = () => {
+      if (finished) return
+      finished = true
+      xrImmersiveExitBusyRef.current = false
+      setPhase('landing')
+    }
+
+    const storeSession = xrStore.getState().session
+    const glSession = xrNativeSessionRef.current
+    const session = storeSession ?? glSession
+
+    if (session == null) {
+      goToLanding()
+      return
+    }
+
+    if (!arSupport.checked || !arSupport.supported) {
+      goToLanding()
+      return
+    }
+
+    if (xrImmersiveExitBusyRef.current) return
+    xrImmersiveExitBusyRef.current = true
+
+    let failTimer = null
+    let domExitScheduled = false
+
+    const scheduleDomExit = () => {
+      if (domExitScheduled) return
+      domExitScheduled = true
+      if (failTimer != null) {
+        window.clearTimeout(failTimer)
+        failTimer = null
+      }
+      xrImmersiveExitBusyRef.current = false
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          window.setTimeout(() => {
+            setPhase('landing')
+          }, 320)
+        })
+      })
+    }
+
+    const nativeSession = glSession ?? storeSession
+
+    try {
+      nativeSession.addEventListener(
+        'end',
+        () => {
+          scheduleDomExit()
+        },
+        { once: true },
+      )
+    } catch {
+      /* ignore */
+    }
+
+    failTimer = window.setTimeout(() => {
+      scheduleDomExit()
+    }, 8000)
+
+    setXrExitReturnsToLanding(true)
     setPhase('xr-exiting')
 
     try {
@@ -633,7 +822,9 @@ function App() {
   const isWebXrDemoSetup = phase === 'onboarding' && onboardingStep === 3 && arSupport.checked && arSupport.supported
   /** `xr-exiting` keeps `<Canvas>` mounted (not `ended`) until the XR session has fully ended. */
   const showCanvas =
-    phase !== 'landing' && phase !== 'unsupported-mobile' && phase !== 'ended'
+    phase !== 'unsupported-mobile' &&
+    phase !== 'ended' &&
+    (phase !== 'landing' || (arSupport.checked && arSupport.supported))
 
   return (
     <main
@@ -644,7 +835,12 @@ function App() {
       }`}
     >
       {phase === 'landing' && (
-        <LandingPage onEnterExperience={handleEnterExperience} />
+        <LandingPage
+          onEnterExperience={handleEnterExperience}
+          onEnterArMinimal={handleEnterArMinimal}
+          arMinimalReady={landingXrGlReady}
+          immersiveArSupported={arSupport.checked && arSupport.supported}
+        />
       )}
       {phase === 'unsupported-mobile' && (
         <UnsupportedMobilePage onGoBack={handleUnsupportedMobileGoBack} />
@@ -653,6 +849,7 @@ function App() {
       {phase !== 'ended' &&
         phase !== 'xr-exiting' &&
         phase !== 'landing' &&
+        phase !== 'ar-minimal' &&
         phase !== 'unsupported-mobile' &&
         arSupport.checked &&
         arSupport.supported && (
@@ -681,22 +878,41 @@ function App() {
       {phase === 'xr-exiting' && (
         <div className="xr-exit-overlay" role="status" aria-live="polite">
           <p className="xr-exit-overlay__title">Exiting AR…</p>
-          <p className="xr-exit-overlay__hint">Returning to the visit summary.</p>
+          <p className="xr-exit-overlay__hint">
+            {xrExitReturnsToLanding
+              ? 'Returning to the landing page.'
+              : 'Returning to the visit summary.'}
+          </p>
         </div>
       )}
 
       {showCanvas && (
-        <Canvas camera={{ position: [0, 1.6, 0], fov: 60 }}>
+        <div
+          className={
+            phase === 'landing' && arSupport.checked && arSupport.supported ? 'landing-xr-bootstrap' : undefined
+          }
+        >
+          <Canvas camera={{ position: [0, 1.6, 0], fov: 60 }}>
           {arSupport.checked && arSupport.supported ? (
             <XR store={xrStore}>
               <XrActiveSessionProbe sessionRef={xrNativeSessionRef} />
-              {webxrImmersive ? (
+              {phase === 'landing' && <LandingXrGlReadyProbe onReady={onLandingXrGlReady} />}
+              {webxrImmersiveUi ? (
                 <>
                   {phase === 'xr-exiting' && (
                     <XRDomOverlay className="xr-exit-overlay xr-exit-overlay--dom">
                       <p className="xr-exit-overlay__title">Exiting AR…</p>
-                      <p className="xr-exit-overlay__hint">Returning to the visit summary.</p>
+                      <p className="xr-exit-overlay__hint">
+                        {xrExitReturnsToLanding
+                          ? 'Returning to the landing page.'
+                          : 'Returning to the visit summary.'}
+                      </p>
                     </XRDomOverlay>
+                  )}
+                  {phase === 'ar-minimal' && (
+                    <Suspense fallback={null}>
+                      <ArMinimalExitButton3D onExit={handleExitMinimalAr} />
+                    </Suspense>
                   )}
                   {phase === 'onboarding' && (
                     <OnboardingHUD
@@ -771,6 +987,7 @@ function App() {
             </>
           )}
         </Canvas>
+        </div>
       )}
 
       {phase === 'ended' && (

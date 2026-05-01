@@ -1,6 +1,8 @@
 import heroImage from './assets/NewHero.png'
 
-function LandingPage({ onEnterExperience }) {
+function LandingPage({ onEnterExperience, onEnterArMinimal, arMinimalReady, immersiveArSupported }) {
+  const arDisabled = immersiveArSupported === true && !arMinimalReady
+
   return (
     <div style={{
       width: '100%',
@@ -15,7 +17,45 @@ function LandingPage({ onEnterExperience }) {
       alignItems: 'stretch',
       overflowY: 'auto',
       padding: '40px 20px 0',
+      position: 'relative',
+      zIndex: 1,
     }}>
+      {/* Minimal WebXR debug entry — passthrough + single exit control */}
+      <div
+        style={{
+          width: '100%',
+          maxWidth: '900px',
+          margin: '0 auto 24px',
+          flexShrink: 0,
+        }}
+      >
+        <button
+          type="button"
+          onClick={onEnterArMinimal}
+          disabled={immersiveArSupported !== true || arDisabled}
+          title={
+            immersiveArSupported !== true
+              ? 'immersive-ar is not available in this browser or context (HTTPS / flags).'
+              : arDisabled
+                ? 'Preparing WebGL…'
+                : 'Enter passthrough AR with only an exit control'
+          }
+          style={{
+            width: '100%',
+            background: immersiveArSupported === true && !arDisabled ? '#1a6bff' : 'rgba(255,255,255,0.18)',
+            color: immersiveArSupported === true && !arDisabled ? '#ffffff' : 'rgba(243,247,252,0.55)',
+            border: '1px solid rgba(172, 203, 255, 0.45)',
+            padding: '22px 28px',
+            fontSize: '1.35rem',
+            fontWeight: 700,
+            borderRadius: '12px',
+            cursor: immersiveArSupported === true && !arDisabled ? 'pointer' : 'not-allowed',
+          }}
+        >
+          Enter AR mode
+        </button>
+      </div>
+
       <div
         style={{
           width: '100%',
