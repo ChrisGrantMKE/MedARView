@@ -1,3 +1,6 @@
+/** pmndrs WebXR: UI meshes should receive ray “select”, not squeeze “grab” (see xr interactions tutorial). */
+export const xrUiPointerEventsType = { deny: 'grab' }
+
 export const hudTheme = {
   surfaceTint: '#000000',
   surfaceOpacity: 0.2,

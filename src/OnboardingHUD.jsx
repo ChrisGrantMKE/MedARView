@@ -11,8 +11,6 @@ const obOffsetDemoSetup = new Vector3(0, 0.05 - DEMO_PANEL_H * 0.2, -0.72)
 const panelDark = '#091522'
 const btnDefault = '#0e4d7a'
 const btnHover = '#1a6fa8'
-const btnGreen = '#0b5c3a'
-const btnGreenHover = '#0d7a4e'
 
 const STEPS = [
   {
@@ -37,11 +35,10 @@ const STEPS = [
   },
 ]
 
-function OnboardingHUD({ step, onContinue, onBeginVisit }) {
+function OnboardingHUD({ step, onContinue }) {
   const groupRef = useRef(null)
   const { camera } = useThree()
   const [hovering, setHovering] = useState(false)
-  const [hoverBegin, setHoverBegin] = useState(false)
 
   useFrame(() => {
     if (!groupRef.current) return
@@ -154,17 +151,8 @@ function OnboardingHUD({ step, onContinue, onBeginVisit }) {
         (~8 ft / 2.4 m away)
       </Text>
 
-      <mesh
-        position={[0.29, -0.28, 0]}
-        onClick={onBeginVisit}
-        onPointerOver={() => setHoverBegin(true)}
-        onPointerOut={() => setHoverBegin(false)}
-      >
-        <planeGeometry args={[0.22, 0.04]} />
-        <meshBasicMaterial color={hoverBegin ? btnGreenHover : btnGreen} transparent opacity={0.88} />
-      </mesh>
-      <Text position={[0.29, -0.28, 0.002]} anchorX="center" anchorY="middle" fontSize={0.017} color="#a8f5d0">
-        TAP TO BEGIN VISIT
+      <Text position={[0.29, -0.28, 0]} anchorX="center" anchorY="middle" fontSize={0.016} maxWidth={0.42} textAlign="center" color="#9dbfe8">
+        Press “Begin visit” ahead of you (center).
       </Text>
     </group>
   )

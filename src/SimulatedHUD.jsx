@@ -176,86 +176,86 @@ function SimulatedHUD({
       <>
         {/* On top of video area: caption + simulated mic note in one panel */}
         <group position={patientLivePosition}>
-            <RoundedRect
-              width={PATIENT_LIVE_W}
-              height={PATIENT_LIVE_H}
-              radius={patientLiveR}
-              color={panelColor}
-              opacity={0.72}
-              borderColor="#5a7a9a"
-              borderOpacity={0.35}
-              borderWidth={1}
-              z={-0.002}
-            />
-            <Text position={[-PATIENT_LIVE_W / 2 + 0.01, 0.028, 0]} anchorX="left" anchorY="middle" fontSize={0.013} color="#f3c96b">
-              PATIENT LIVE
-            </Text>
-            <Text position={[-PATIENT_LIVE_W / 2 + 0.01, 0.004, 0]} anchorX="left" anchorY="middle" fontSize={0.01} color="#9dbfe8">
-              Mic: disabled (simulated mode)
-            </Text>
-            <Text
-              position={[-PATIENT_LIVE_W / 2 + 0.01, -0.024, 0]}
-              anchorX="left"
-              anchorY="top"
-              fontSize={0.014}
-              color="#fff6de"
-              maxWidth={0.32}
-              textAlign="left"
-              lineHeight={1.25}
-            >
-              {patientLiveCaption || 'Awaiting patient speech...'}
-            </Text>
+          <RoundedRect
+            width={PATIENT_LIVE_W}
+            height={PATIENT_LIVE_H}
+            radius={patientLiveR}
+            color={panelColor}
+            opacity={0.72}
+            borderColor="#5a7a9a"
+            borderOpacity={0.35}
+            borderWidth={1}
+            z={-0.002}
+          />
+          <Text position={[-PATIENT_LIVE_W / 2 + 0.01, 0.028, 0]} anchorX="left" anchorY="middle" fontSize={0.013} color="#f3c96b">
+            PATIENT LIVE
+          </Text>
+          <Text position={[-PATIENT_LIVE_W / 2 + 0.01, 0.004, 0]} anchorX="left" anchorY="middle" fontSize={0.01} color="#9dbfe8">
+            Mic: disabled (simulated mode)
+          </Text>
+          <Text
+            position={[-PATIENT_LIVE_W / 2 + 0.01, -0.024, 0]}
+            anchorX="left"
+            anchorY="top"
+            fontSize={0.014}
+            color="#fff6de"
+            maxWidth={0.32}
+            textAlign="left"
+            lineHeight={1.25}
+          >
+            {patientLiveCaption || 'Awaiting patient speech...'}
+          </Text>
         </group>
 
         <group position={lowerRightLayout.conversation}>
-            <RoundedRect
-              width={CONV_W}
-              height={CONV_H}
-              radius={convR}
-              color={panelColor}
-              opacity={0.58}
-              borderColor="#5a7a9a"
-              borderOpacity={0.3}
-              borderWidth={1}
-              z={-0.002}
-            />
-            <Text position={[-CONV_W / 2 + 0.01, 0.096, 0]} anchorX="left" anchorY="middle" fontSize={0.022} color="#cfe8ff">
-              CONVERSATION
+          <RoundedRect
+            width={CONV_W}
+            height={CONV_H}
+            radius={convR}
+            color={panelColor}
+            opacity={0.58}
+            borderColor="#5a7a9a"
+            borderOpacity={0.3}
+            borderWidth={1}
+            z={-0.002}
+          />
+          <Text position={[-CONV_W / 2 + 0.01, 0.096, 0]} anchorX="left" anchorY="middle" fontSize={0.022} color="#cfe8ff">
+            CONVERSATION
+          </Text>
+          <Text position={[CONV_W / 2 - 0.01, 0.096, 0]} anchorX="right" anchorY="middle" fontSize={0.015} color="#8af3d1">
+            {`Active: ${activeSpeaker}`}
+          </Text>
+          <Text position={[CONV_W / 2 - 0.01, 0.066, 0]} anchorX="right" anchorY="middle" fontSize={0.012} color="#4f7a9a" maxWidth={0.21} textAlign="right">
+            {speakerAttributionStatus ? `Attribution: ${speakerAttributionStatus}` : 'Attribution: --'}
+          </Text>
+          <Text position={[CONV_W / 2 - 0.01, 0.04, 0]} anchorX="right" anchorY="middle" fontSize={0.011} color="#3f6888" maxWidth={0.21} textAlign="right">
+            {speechProviderLabel ? `Provider: ${speechProviderLabel}` : 'Provider: --'}
+          </Text>
+          <Text position={[CONV_W / 2 - 0.01, 0.014, 0]} anchorX="right" anchorY="middle" fontSize={0.011} color="#3f6888" maxWidth={0.21} textAlign="right">
+            {budgetStatus ? `Budget: ${budgetStatus}` : 'Budget: --'}
+          </Text>
+          {recentConvo.length === 0 ? (
+            <Text position={[-CONV_W / 2 + 0.01, 0.006, 0]} anchorX="left" anchorY="middle" fontSize={0.018} color="#3a5a70">
+              Conversation will appear here...
             </Text>
-            <Text position={[CONV_W / 2 - 0.01, 0.096, 0]} anchorX="right" anchorY="middle" fontSize={0.015} color="#8af3d1">
-              {`Active: ${activeSpeaker}`}
-            </Text>
-            <Text position={[CONV_W / 2 - 0.01, 0.066, 0]} anchorX="right" anchorY="middle" fontSize={0.012} color="#4f7a9a" maxWidth={0.21} textAlign="right">
-              {speakerAttributionStatus ? `Attribution: ${speakerAttributionStatus}` : 'Attribution: --'}
-            </Text>
-            <Text position={[CONV_W / 2 - 0.01, 0.04, 0]} anchorX="right" anchorY="middle" fontSize={0.011} color="#3f6888" maxWidth={0.21} textAlign="right">
-              {speechProviderLabel ? `Provider: ${speechProviderLabel}` : 'Provider: --'}
-            </Text>
-            <Text position={[CONV_W / 2 - 0.01, 0.014, 0]} anchorX="right" anchorY="middle" fontSize={0.011} color="#3f6888" maxWidth={0.21} textAlign="right">
-              {budgetStatus ? `Budget: ${budgetStatus}` : 'Budget: --'}
-            </Text>
-            {recentConvo.length === 0 ? (
-              <Text position={[-CONV_W / 2 + 0.01, 0.006, 0]} anchorX="left" anchorY="middle" fontSize={0.018} color="#3a5a70">
-                Conversation will appear here...
-              </Text>
-            ) : (
-              recentConvo.map((entry, i) => {
-                const yPos = 0.03 - i * 0.052
-                const label = entry.speaker === 'Doctor' ? 'Dr' : 'Pt'
-                const labelColor = entry.speaker === 'Doctor' ? '#8af3d1' : '#f3c96b'
-                const truncated = entry.text.length > 46 ? entry.text.slice(0, 46) + '\u2026' : entry.text
-                return (
-                  <group key={entry.id}>
-                    <Text position={[-CONV_W / 2 + 0.01, yPos, 0]} anchorX="left" anchorY="middle" fontSize={0.018} color={labelColor}>
-                      {`${label}:`}
-                    </Text>
-                    <Text position={[-CONV_W / 2 + 0.053, yPos, 0]} anchorX="left" anchorY="middle" fontSize={0.018} color="#e8f4ff">
-                      {truncated}
-                    </Text>
-                  </group>
-                )
-              })
-            )}
+          ) : (
+            recentConvo.map((entry, i) => {
+              const yPos = 0.03 - i * 0.052
+              const label = entry.speaker === 'Doctor' ? 'Dr' : 'Pt'
+              const labelColor = entry.speaker === 'Doctor' ? '#8af3d1' : '#f3c96b'
+              const truncated = entry.text.length > 46 ? entry.text.slice(0, 46) + '\u2026' : entry.text
+              return (
+                <group key={entry.id}>
+                  <Text position={[-CONV_W / 2 + 0.01, yPos, 0]} anchorX="left" anchorY="middle" fontSize={0.018} color={labelColor}>
+                    {`${label}:`}
+                  </Text>
+                  <Text position={[-CONV_W / 2 + 0.053, yPos, 0]} anchorX="left" anchorY="middle" fontSize={0.018} color="#e8f4ff">
+                    {truncated}
+                  </Text>
+                </group>
+              )
+            })
+          )}
         </group>
 
         <group position={lowerRightLayout.endSimulation}>

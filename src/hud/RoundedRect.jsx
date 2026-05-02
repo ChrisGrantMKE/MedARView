@@ -1,5 +1,5 @@
-import { useMemo } from 'react'
-import { Shape } from 'three'
+import { useLayoutEffect, useMemo, useRef } from 'react'
+import { Mesh, Shape } from 'three'
 import { Line } from '@react-three/drei'
 
 function buildRoundedShape(width, height, radius) {
@@ -30,17 +30,34 @@ export default function RoundedRect({
   borderWidth = 2,
   z = 0,
   depthTest = true,
+  /** When true, mesh is not raycast — stops full-menu backdrops from eating XR/controller rays. */
+  raycastDisabled = false,
   ...meshProps
 }) {
+  const meshRef = useRef(null)
   const shape = useMemo(() => buildRoundedShape(width, height, radius), [width, height, radius])
   const borderPoints = useMemo(
     () => shape.getPoints(40).map((p) => [p.x, p.y, z + 0.001]),
     [shape, z]
   )
 
+  useLayoutEffect(() => {
+    const mesh = meshRef.current
+    if (!mesh) return
+    const orig = mesh.raycast
+    if (raycastDisabled) {
+      mesh.raycast = () => {}
+    } else {
+      mesh.raycast = Mesh.prototype.raycast.bind(mesh)
+    }
+    return () => {
+      mesh.raycast = orig
+    }
+  }, [raycastDisabled])
+
   return (
     <group position={[0, 0, z]}>
-      <mesh {...meshProps}>
+      <mesh ref={meshRef} {...meshProps}>
         <shapeGeometry args={[shape]} />
         <meshBasicMaterial
           color={color}

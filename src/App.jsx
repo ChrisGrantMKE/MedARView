@@ -1,9 +1,9 @@
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { Suspense, startTransition, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { ARButton, XR, XRDomOverlay, createXRStore } from '@react-three/xr'
+import { ARButton, XR, XRDomOverlay, createXRStore, useXR } from '@react-three/xr'
 import { Text } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
-import { Vector3 } from 'three'
+import { Color, Vector3 } from 'three'
 import OnboardingHUD from './OnboardingHUD'
 import SessionEndScreen from './SessionEndScreen'
 import LandingPage from './LandingPage'
@@ -11,6 +11,7 @@ import SimulatedHUD from './SimulatedHUD'
 import UnsupportedMobilePage from './UnsupportedMobilePage'
 import RoundedRect from './hud/RoundedRect'
 import HudMenuPanel from './hud/HudMenuPanel'
+import { xrUiPointerEventsType } from './hud/hudTheme'
 import { inferSpeaker } from './speakerAttribution'
 import { speechConfig, getSpeechProviderLabel, shouldUseExternalDictation } from './speechConfig'
 import { formatBudgetSummary, getSpeechBudgetSnapshot, recordSpeechSession } from './speechBudget'
@@ -30,6 +31,7 @@ const xrStore = createXRStore({
   /**
    * Default XR ray pointers use `minDistance: 0.2` (m). Hits closer than that are dropped — common with
    * head-locked panels when aiming from the waist/chest. Allow near-field UI for minimal AR + HUD.
+   * See https://docs.pmnd.rs/xr/tutorials/interactions — use `pointerEventsType` on UI meshes so grab vs ray is predictable.
    */
   controller: {
     rayPointer: { minDistance: 0 },
@@ -37,7 +39,6 @@ const xrStore = createXRStore({
   hand: {
     rayPointer: {
       minDistance: 0,
-      /** Default hand ray visual is 0.2 m; extend so the aim line reaches arm’s-length UI. */
       rayModel: { maxLength: 3 },
     },
   },
@@ -54,27 +55,51 @@ const patientRecord = {
 
 const clamp = (v, min, max) => Math.min(max, Math.max(min, v))
 
-/** Same vertical tweak as `OnboardingHUD` step 3 (`DEMO_PANEL_H * 0.2`). */
-const DEMO_PANEL_H = 0.812
-/** Active visit HUD anchor matches demo-setup “ideal” frame in onboarding. */
-const activeOffset = new Vector3(0, 0.05 - DEMO_PANEL_H * 0.2, -0.72)
-
 function panelRadiusForSize(width, height, cap = 0.018) {
   const half = Math.min(width, height) / 2
   return Math.min(cap, Math.max(0.006, half * 0.22))
 }
 
-/** Match `SimulatedHUD` end control proportions for WebXR. */
-const WEBXR_END_W = 0.42 * 0.5
-const WEBXR_END_H = 0.068 * 0.5
-const WEBXR_END_FONT = 0.023 * 0.5
-
-/** Keeps `gl.xr.getSession()` in sync for exit — store session can lag vs Three's WebXRManager on some paths. */
-function XrActiveSessionProbe({ sessionRef }) {
+/**
+ * Keeps `gl.xr.getSession()` in sync for exit; also reports native session presence so UI can use the
+ * immersive WebXR tree as soon as the GL session exists (store session often lags one+ frames after `enterAR()`).
+ */
+function XrActiveSessionProbe({ sessionRef, onHasNativeSession }) {
   const gl = useThree((s) => s.gl)
+  const prevHas = useRef(null)
   useFrame(() => {
-    sessionRef.current = gl.xr.getSession() ?? null
+    const s = gl.xr.getSession() ?? null
+    sessionRef.current = s
+    const has = s != null
+    if (prevHas.current !== has) {
+      prevHas.current = has
+      onHasNativeSession?.(has)
+    }
   })
+  return null
+}
+
+/**
+ * Quest / passthrough: opaque scene background or alpha-1 clear hides the real-world underlay
+ * (see Meta WebXR passthrough + webxr.md). While an immersive session is active, clear to alpha 0
+ * and keep `scene.background` null so R3F UI + passthrough composite correctly and ray hits stay consistent.
+ */
+function ImmersivePassthroughSync() {
+  const session = useXR((s) => s.session)
+  const { gl, scene } = useThree()
+  useEffect(() => {
+    if (session == null) return
+    const prevBg = scene.background
+    const prevColor = new Color()
+    gl.getClearColor(prevColor)
+    const prevAlpha = gl.getClearAlpha()
+    scene.background = null
+    gl.setClearColor(0x000000, 0)
+    return () => {
+      scene.background = prevBg
+      gl.setClearColor(prevColor, prevAlpha)
+    }
+  }, [session, gl, scene])
   return null
 }
 
@@ -87,7 +112,7 @@ function LandingXrGlReadyProbe({ onReady }) {
   return null
 }
 
-/** World-anchored control for minimal AR: many runtimes don’t show `XRDomOverlay` in-headset; 3D UI is reliable. */
+/** World-anchored exit for minimal AR landing flow — reliable XR pointers vs DOM overlay. */
 const AR_MINIMAL_EXIT_W = 0.52
 const AR_MINIMAL_EXIT_H = 0.11
 function ArMinimalExitButton3D({ onExit }) {
@@ -110,7 +135,6 @@ function ArMinimalExitButton3D({ onExit }) {
 
   return (
     <group ref={groupRef} renderOrder={1000}>
-      {/* Handlers on the mesh (not only the parent group) so @pmndrs pointer-events ray hits register. */}
       <RoundedRect
         width={AR_MINIMAL_EXIT_W}
         height={AR_MINIMAL_EXIT_H}
@@ -123,6 +147,7 @@ function ArMinimalExitButton3D({ onExit }) {
         z={-0.002}
         depthTest={false}
         pointerEventsOrder={1000}
+        pointerEventsType={xrUiPointerEventsType}
         onClick={pick}
         onPointerDown={pick}
       />
@@ -133,10 +158,65 @@ function ArMinimalExitButton3D({ onExit }) {
         fontSize={0.03}
         color="#f3f7fc"
         pointerEventsOrder={1000}
+        pointerEventsType={xrUiPointerEventsType}
         onClick={pick}
         onPointerDown={pick}
       >
         Exit AR mode
+      </Text>
+    </group>
+  )
+}
+
+/** Same interaction stack as minimal exit — replaces unreliable plane `mesh` on onboarding demo step. */
+function OnboardingBeginVisitButton3D({ onBeginVisit }) {
+  const groupRef = useRef(null)
+  const offset = useMemo(() => new Vector3(0, -0.06, -0.68), [])
+  const { camera } = useThree()
+  const fillR = useMemo(() => panelRadiusForSize(AR_MINIMAL_EXIT_W, AR_MINIMAL_EXIT_H, 0.018), [])
+
+  useFrame(() => {
+    if (!groupRef.current) return
+    const worldOffset = offset.clone().applyQuaternion(camera.quaternion)
+    groupRef.current.position.copy(camera.position).add(worldOffset)
+    groupRef.current.quaternion.copy(camera.quaternion)
+  })
+
+  const pick = (e) => {
+    e.stopPropagation()
+    onBeginVisit()
+  }
+
+  return (
+    <group ref={groupRef} renderOrder={1000}>
+      <RoundedRect
+        width={AR_MINIMAL_EXIT_W}
+        height={AR_MINIMAL_EXIT_H}
+        radius={fillR}
+        color="#0b5c3a"
+        opacity={0.94}
+        borderColor="#5ecf8f"
+        borderOpacity={0.55}
+        borderWidth={2}
+        z={-0.002}
+        depthTest={false}
+        pointerEventsOrder={1000}
+        pointerEventsType={xrUiPointerEventsType}
+        onClick={pick}
+        onPointerDown={pick}
+      />
+      <Text
+        position={[0, 0, 0.004]}
+        anchorX="center"
+        anchorY="middle"
+        fontSize={0.026}
+        color="#a8f5d0"
+        pointerEventsOrder={1000}
+        pointerEventsType={xrUiPointerEventsType}
+        onClick={pick}
+        onPointerDown={pick}
+      >
+        Begin visit
       </Text>
     </group>
   )
@@ -153,6 +233,19 @@ function WebXrSessionEndBar({ onEndSimulation }) {
   )
 }
 
+/** Match `SimulatedHUD` end control — compact bar (restored AR visit layout). */
+const WEBXR_END_W = 0.42 * 0.5
+const WEBXR_END_H = 0.068 * 0.5
+const WEBXR_END_FONT = 0.023 * 0.5
+
+/** Same vertical tweak as onboarding demo setup — AR visit HUD must stay camera-locked, no full-scene fill. */
+const DEMO_PANEL_H = 0.812
+const activeOffset = new Vector3(0, 0.05 - DEMO_PANEL_H * 0.2, -0.72)
+
+/**
+ * Immersive AR visit HUD only: floating panels over passthrough (no SimulatedHUD video plane / scene fill).
+ * Uses depthTest={false} so Meta passthrough depth does not hide controls.
+ */
 function XRActiveFallback({
   onEndSimulation,
   micStatus,
@@ -174,7 +267,6 @@ function XRActiveFallback({
   const dictR = useMemo(() => panelRadiusForSize(0.34, 0.26), [])
   const panelColor = '#091522'
 
-  /** Same left placement math as `SimulatedHUD` (viewport quarter), using this HUD’s Z depth. */
   const menuLayout = useMemo(() => {
     const depth = Math.abs(activeOffset.z)
     const fovRad = (camera.fov * Math.PI) / 180
@@ -210,21 +302,24 @@ function XRActiveFallback({
     groupRef.current.quaternion.copy(camera.quaternion)
   })
 
+  /** Defer out of XR select handler (same pattern as Begin visit on Quest). */
   const endVisit = (e) => {
     e.stopPropagation()
-    onEndSimulation()
+    queueMicrotask(() => {
+      startTransition(() => {
+        onEndSimulation()
+      })
+    })
   }
 
-  /** Lower-right dictation stack. */
   const dictPos = [0.31, -0.165, 0]
-  /** Center bottom of the same ideal frame as simulated HUD end bar. */
   const endPos = [0, -0.288, 0]
 
   const lx = -dictW / 2 + 0.02
   const ty = dictH / 2 - 0.02
 
   return (
-    <group ref={groupRef}>
+    <group ref={groupRef} renderOrder={1000}>
       <Suspense fallback={null}>
         <HudMenuPanel
           position={menuLayout.position}
@@ -233,10 +328,11 @@ function XRActiveFallback({
           onSetOverlay={setOverlayEnabled}
           selectedMenuId={selectedMenuId}
           onToggleItem={(id) => setSelectedMenuId((prev) => (prev === id ? null : id))}
+          depthTest={false}
+          interactionOrder={800}
         />
       </Suspense>
 
-      {/* Lower-right: dictation-only panel */}
       <group position={dictPos}>
         <RoundedRect
           width={dictW}
@@ -248,23 +344,24 @@ function XRActiveFallback({
           borderOpacity={0.35}
           borderWidth={1}
           z={-0.002}
+          depthTest={false}
         />
-        <Text position={[lx, ty, 0.002]} anchorX="left" anchorY="top" fontSize={0.017} color="#cfe8ff">
+        <Text position={[lx, ty, 0.002]} anchorX="left" anchorY="top" fontSize={0.017} color="#cfe8ff" depthTest={false}>
           DICTATION
         </Text>
-        <Text position={[lx, ty - 0.03, 0.002]} anchorX="left" anchorY="top" fontSize={0.011} color="#9dbfe8">
+        <Text position={[lx, ty - 0.03, 0.002]} anchorX="left" anchorY="top" fontSize={0.011} color="#9dbfe8" depthTest={false}>
           {`Mic: ${speechSupported ? micStatus : 'unsupported'}`}
         </Text>
-        <Text position={[lx, ty - 0.05, 0.002]} anchorX="left" anchorY="top" fontSize={0.01} color="#8af3d1" maxWidth={dictW - 0.04}>
+        <Text position={[lx, ty - 0.05, 0.002]} anchorX="left" anchorY="top" fontSize={0.01} color="#8af3d1" maxWidth={dictW - 0.04} depthTest={false}>
           {speakerAttributionStatus || 'Attribution: --'}
         </Text>
-        <Text position={[lx, ty - 0.072, 0.002]} anchorX="left" anchorY="top" fontSize={0.01} color="#6bb5ff" maxWidth={dictW - 0.04}>
+        <Text position={[lx, ty - 0.072, 0.002]} anchorX="left" anchorY="top" fontSize={0.01} color="#6bb5ff" maxWidth={dictW - 0.04} depthTest={false}>
           {speechProviderLabel ? `Provider: ${speechProviderLabel}` : 'Provider: --'}
         </Text>
-        <Text position={[lx, ty - 0.09, 0.002]} anchorX="left" anchorY="top" fontSize={0.01} color="#6bb5ff" maxWidth={dictW - 0.04}>
+        <Text position={[lx, ty - 0.09, 0.002]} anchorX="left" anchorY="top" fontSize={0.01} color="#6bb5ff" maxWidth={dictW - 0.04} depthTest={false}>
           {budgetStatus ? `Budget: ${budgetStatus}` : 'Budget: --'}
         </Text>
-        <Text position={[lx, ty - 0.108, 0.002]} anchorX="left" anchorY="top" fontSize={0.01} color="#9dbfe8" maxWidth={dictW - 0.04}>
+        <Text position={[lx, ty - 0.108, 0.002]} anchorX="left" anchorY="top" fontSize={0.01} color="#9dbfe8" maxWidth={dictW - 0.04} depthTest={false}>
           {lastHeardCommand ? `Heard: ${lastHeardCommand}` : 'Heard: --'}
         </Text>
         <Text
@@ -276,13 +373,13 @@ function XRActiveFallback({
           maxWidth={dictW - 0.04}
           textAlign="left"
           lineHeight={1.25}
+          depthTest={false}
         >
           {patientLiveCaption || 'Awaiting patient speech...'}
         </Text>
       </group>
 
-      {/* Center bottom: compact rounded end control (matches simulated HUD) */}
-      <group position={endPos} onClick={endVisit}>
+      <group position={endPos}>
         <RoundedRect
           width={WEBXR_END_W}
           height={WEBXR_END_H}
@@ -293,6 +390,11 @@ function XRActiveFallback({
           borderOpacity={0.45}
           borderWidth={1}
           z={-0.002}
+          depthTest={false}
+          pointerEventsOrder={1000}
+          pointerEventsType={xrUiPointerEventsType}
+          onClick={endVisit}
+          onPointerDown={endVisit}
         />
         <Text
           position={[0, 0, 0.003]}
@@ -300,7 +402,11 @@ function XRActiveFallback({
           anchorY="middle"
           fontSize={WEBXR_END_FONT}
           color="#ffcdd3"
+          depthTest={false}
+          pointerEventsOrder={1000}
+          pointerEventsType={xrUiPointerEventsType}
           onClick={endVisit}
+          onPointerDown={endVisit}
         >
           END SIMULATION
         </Text>
@@ -339,8 +445,11 @@ function App() {
   const xrImmersiveExitBusyRef = useRef(false)
   /** Set with `setXrExitReturnsToLanding` before `xr-exiting` so overlays know landing vs visit summary. */
   const [xrExitReturnsToLanding, setXrExitReturnsToLanding] = useState(false)
+  /** True when `gl.xr.getSession()` exists — avoids rendering simulated HUD branch while immersive session is active but store lags. */
+  const [hasNativeXrSession, setHasNativeXrSession] = useState(false)
   const phaseRef = useRef(phase)
-  const stepRef = useRef(2)
+  /** Align with initial `onboardingStep` (demo setup) until sync effect runs. */
+  const stepRef = useRef(3)
   const speakerRef = useRef('Doctor')
   const conversationRef = useRef([])
   const recognitionRef = useRef(null)
@@ -349,6 +458,9 @@ function App() {
 
   const onLandingXrGlReady = useCallback((ready) => {
     setLandingXrGlReady(ready)
+  }, [])
+  const onNativeXrSessionChanged = useCallback((has) => {
+    setHasNativeXrSession(has)
   }, [])
   useEffect(() => { stepRef.current = onboardingStep }, [onboardingStep])
   useEffect(() => { speakerRef.current = activeSpeaker }, [activeSpeaker])
@@ -371,12 +483,17 @@ function App() {
    */
   const webxrImmersive = arSupport.checked && arSupport.supported && xrSession != null
   /**
-   * `xrStore.session` can lag the native session by a tick after `enterAR()` resolves, so `webxrImmersive`
-   * stays false while `phase === 'ar-minimal'` — and the exit `XRDomOverlay` never mounts. Same class of bug
-   * on `xr-exiting` if the store clears before the phase flips. Force the immersive DOM-overlay branch.
+   * `xrStore.session` can lag native session after `enterAR()` / immersive start.
+   * Include `hasNativeXrSession` for active visit so we mount XR HUD + pointers immediately after entering AR
+   * from simulated mode (otherwise SimulatedHUD stays up briefly or sticks if store lags).
    */
   const webxrImmersiveUi =
-    webxrImmersive || phase === 'ar-minimal' || phase === 'xr-exiting'
+    webxrImmersive ||
+    phase === 'ar-minimal' ||
+    phase === 'xr-exiting' ||
+    (phase === 'active' && hasNativeXrSession) ||
+    /** Store session can lag native `gl.xr` — keep immersive HUD + ray pointers during AR onboarding. */
+    (phase === 'onboarding' && hasNativeXrSession)
 
   useEffect(() => {
     const handleResize = () => setViewportWidth(window.innerWidth)
@@ -508,7 +625,7 @@ function App() {
         const status = await navigator.permissions.query({ name: 'microphone' })
         setMicPermission(status.state)
         status.onchange = () => setMicPermission(status.state)
-      } catch (_) {
+      } catch {
         // Permissions API is not always available for microphone.
       }
     }
@@ -537,16 +654,21 @@ function App() {
       const currentPhase = phaseRef.current
       const currentStep = stepRef.current
 
-      if (currentPhase === 'onboarding' && currentStep === 4) {
+      /** Demo setup is step 3 (not 4); voice “begin visit” must match the visible onboarding step. */
+      if (currentPhase === 'onboarding' && currentStep === 3) {
         if (normalized.includes('begin visit') || normalized.includes('med view') || normalized.includes('medical view')) {
           if (budgetSnapshot.exhausted) {
             setLastHeardCommand('Speech budget exhausted for the current 30-day window.')
             return
           }
 
-          sessionStartRef.current = Date.now()
-          sessionBudgetStartRef.current = Date.now()
-          setPhase('active')
+          queueMicrotask(() => {
+            startTransition(() => {
+              sessionStartRef.current = Date.now()
+              sessionBudgetStartRef.current = Date.now()
+              setPhase('active')
+            })
+          })
         }
         return
       }
@@ -598,25 +720,36 @@ function App() {
       const p = phaseRef.current
       if (p !== 'ended' && p !== 'xr-exiting') {
         setMicStatus('starting')
-        try {
-          rec.start()
-        } catch (_) {
-          setMicStatus('error')
-        }
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            try {
+              rec.start()
+            } catch {
+              setMicStatus('error')
+            }
+          })
+        })
       }
     }
 
     recognitionRef.current = rec
-    try {
-      rec.start()
-    } catch (_) {
-      setMicStatus('error')
-    }
+    let kickStartRaf2 = null
+    const kickStartRaf1 = requestAnimationFrame(() => {
+      kickStartRaf2 = requestAnimationFrame(() => {
+        try {
+          rec.start()
+        } catch {
+          setMicStatus('error')
+        }
+      })
+    })
 
     return () => {
+      cancelAnimationFrame(kickStartRaf1)
+      if (kickStartRaf2 != null) cancelAnimationFrame(kickStartRaf2)
       try {
         rec.stop()
-      } catch (_) {
+      } catch {
         // ignore
       }
     }
@@ -624,27 +757,113 @@ function App() {
 
   const handleAdvanceOnboarding = () => setOnboardingStep(prev => prev + 1)
 
+  /**
+   * Shared path for leaving immersive AR without unmounting `<Canvas>` until `session` has ended
+   * (avoids Quest black compositor void). Used by minimal AR exit and “End simulation”.
+   */
+  const beginGracefulImmersiveExit = (targetPhase) => {
+    let settled = false
+    const goToTarget = () => {
+      if (settled) return
+      settled = true
+      xrImmersiveExitBusyRef.current = false
+      setPhase(targetPhase)
+    }
+
+    const storeSession = xrStore.getState().session
+    const glSession = xrNativeSessionRef.current
+    const session = storeSession ?? glSession
+
+    if (session == null) {
+      goToTarget()
+      return
+    }
+
+    if (!arSupport.checked || !arSupport.supported) {
+      goToTarget()
+      return
+    }
+
+    if (xrImmersiveExitBusyRef.current) return
+    xrImmersiveExitBusyRef.current = true
+
+    let failTimer = null
+    let domExitScheduled = false
+
+    const scheduleDomExit = () => {
+      if (domExitScheduled) return
+      domExitScheduled = true
+      if (failTimer != null) {
+        window.clearTimeout(failTimer)
+        failTimer = null
+      }
+      xrImmersiveExitBusyRef.current = false
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          window.setTimeout(() => {
+            setPhase(targetPhase)
+          }, 320)
+        })
+      })
+    }
+
+    const nativeSession = glSession ?? storeSession
+
+    try {
+      nativeSession.addEventListener(
+        'end',
+        () => {
+          scheduleDomExit()
+        },
+        { once: true },
+      )
+    } catch {
+      /* ignore */
+    }
+
+    failTimer = window.setTimeout(() => {
+      scheduleDomExit()
+    }, 8000)
+
+    setXrExitReturnsToLanding(targetPhase === 'landing')
+    setPhase('xr-exiting')
+
+    try {
+      void nativeSession.end()
+    } catch {
+      /* ignore */
+    }
+  }
+
+  /** Defer state updates out of the XR pointer/select handler — avoids Quest crashes when combining with SR/DOM overlay. */
   const handleBeginVisit = () => {
-    if (!dictationEnabled) {
-      sessionStartRef.current = Date.now()
-      sessionBudgetStartRef.current = null
-      setPatientLiveCaption('Awaiting patient speech...')
-      setPhase('active')
-      return
-    }
+    queueMicrotask(() => {
+      startTransition(() => {
+        if (!dictationEnabled) {
+          sessionStartRef.current = Date.now()
+          sessionBudgetStartRef.current = null
+          setPatientLiveCaption('Awaiting patient speech...')
+          setPhase('active')
+          return
+        }
 
-    if (budgetSnapshot.exhausted) {
-      setLastHeardCommand('Speech budget exhausted for the current 30-day window.')
-      return
-    }
+        if (budgetSnapshot.exhausted) {
+          setLastHeardCommand('Speech budget exhausted for the current 30-day window.')
+          return
+        }
 
-    sessionStartRef.current = Date.now()
-    sessionBudgetStartRef.current = Date.now()
-    setPatientLiveCaption('Awaiting patient speech...')
-    setPhase('active')
+        sessionStartRef.current = Date.now()
+        sessionBudgetStartRef.current = Date.now()
+        setPatientLiveCaption('Awaiting patient speech...')
+        setPhase('active')
+      })
+    })
   }
 
   const handleEndSimulation = () => {
+    if (phaseRef.current === 'xr-exiting' || phaseRef.current === 'ended') {
+      return
+    }
     try {
       recognitionRef.current?.stop()
     } catch {
@@ -658,84 +877,28 @@ function App() {
     }
     setMicStatus('idle')
 
-    let finished = false
-    const goToEnded = () => {
-      if (finished) return
-      finished = true
-      xrImmersiveExitBusyRef.current = false
-      setPhase('ended')
-    }
-
     const storeSession = xrStore.getState().session
     const glSession = xrNativeSessionRef.current
     const session = storeSession ?? glSession
 
     /** Non-immersive: normal SPA transition to end screen. */
     if (session == null) {
-      goToEnded()
+      xrImmersiveExitBusyRef.current = false
+      setPhase('ended')
       return
     }
 
     /**
-     * Immersive WebXR: **do not jump straight to `ended` and unmount `<Canvas>`** while the browser is still
-     * tearing down XR — on Quest that often leaves a black compositor “void”. We hold an `xr-exiting` phase (GL
-     * stays alive), wait for the native session `end` event, then defer `ended` slightly so presentation can reset.
+     * Immersive WebXR: same graceful teardown as minimal AR (`beginGracefulImmersiveExit`) —
+     * hold `xr-exiting`, wait for native `end`, then defer `ended` so the compositor can recover.
      */
     if (!arSupport.checked || !arSupport.supported) {
-      goToEnded()
+      xrImmersiveExitBusyRef.current = false
+      setPhase('ended')
       return
     }
 
-    if (xrImmersiveExitBusyRef.current) return
-    xrImmersiveExitBusyRef.current = true
-
-    let failTimer = null
-    let domExitScheduled = false
-
-    const scheduleDomExit = () => {
-      if (domExitScheduled) return
-      domExitScheduled = true
-      if (failTimer != null) {
-        window.clearTimeout(failTimer)
-        failTimer = null
-      }
-      xrImmersiveExitBusyRef.current = false
-      window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(() => {
-          window.setTimeout(() => {
-            setPhase('ended')
-          }, 320)
-        })
-      })
-    }
-
-    /** Prefer `gl.xr`’s session so `end()` matches Three’s WebXRManager. */
-    const nativeSession = glSession ?? storeSession
-
-    try {
-      nativeSession.addEventListener(
-        'end',
-        () => {
-          scheduleDomExit()
-        },
-        { once: true },
-      )
-    } catch {
-      /* ignore */
-    }
-
-    failTimer = window.setTimeout(() => {
-      scheduleDomExit()
-    }, 8000)
-
-    setXrExitReturnsToLanding(false)
-    setPhase('xr-exiting')
-
-    try {
-      void nativeSession.end()
-    } catch {
-      /* ignore */
-    }
+    beginGracefulImmersiveExit('ended')
   }
 
   const handleExitMinimalAr = () => {
@@ -744,81 +907,13 @@ function App() {
     } catch {
       /* ignore */
     }
-
-    let finished = false
-    const goToLanding = () => {
-      if (finished) return
-      finished = true
-      xrImmersiveExitBusyRef.current = false
-      setPhase('landing')
-    }
-
-    const storeSession = xrStore.getState().session
-    const glSession = xrNativeSessionRef.current
-    const session = storeSession ?? glSession
-
-    if (session == null) {
-      goToLanding()
-      return
-    }
-
-    if (!arSupport.checked || !arSupport.supported) {
-      goToLanding()
-      return
-    }
-
-    if (xrImmersiveExitBusyRef.current) return
-    xrImmersiveExitBusyRef.current = true
-
-    let failTimer = null
-    let domExitScheduled = false
-
-    const scheduleDomExit = () => {
-      if (domExitScheduled) return
-      domExitScheduled = true
-      if (failTimer != null) {
-        window.clearTimeout(failTimer)
-        failTimer = null
-      }
-      xrImmersiveExitBusyRef.current = false
-      window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(() => {
-          window.setTimeout(() => {
-            setPhase('landing')
-          }, 320)
-        })
-      })
-    }
-
-    const nativeSession = glSession ?? storeSession
-
-    try {
-      nativeSession.addEventListener(
-        'end',
-        () => {
-          scheduleDomExit()
-        },
-        { once: true },
-      )
-    } catch {
-      /* ignore */
-    }
-
-    failTimer = window.setTimeout(() => {
-      scheduleDomExit()
-    }, 8000)
-
-    setXrExitReturnsToLanding(true)
-    setPhase('xr-exiting')
-
-    try {
-      void nativeSession.end()
-    } catch {
-      /* ignore */
-    }
+    beginGracefulImmersiveExit('landing')
   }
 
   const simulatedActiveUi = arSupport.checked && !arSupport.supported && phase === 'active'
+  /** Keep visit HUD + controllers mounted during immersive teardown so passthrough doesn’t drop to an empty scene. */
+  const showActiveImmersiveHud =
+    phase === 'active' || (phase === 'xr-exiting' && !xrExitReturnsToLanding)
   const isWebXrDemoSetup = phase === 'onboarding' && onboardingStep === 3 && arSupport.checked && arSupport.supported
   /** `xr-exiting` keeps `<Canvas>` mounted (not `ended`) until the XR session has fully ended. */
   const showCanvas =
@@ -892,10 +987,17 @@ function App() {
             phase === 'landing' && arSupport.checked && arSupport.supported ? 'landing-xr-bootstrap' : undefined
           }
         >
-          <Canvas camera={{ position: [0, 1.6, 0], fov: 60 }}>
+          <Canvas
+            gl={{ alpha: true, antialias: true }}
+            camera={{ position: [0, 1.6, 0], fov: 60 }}
+            onCreated={({ gl }) => {
+              gl.setClearColor(0x000000, 0)
+            }}
+          >
           {arSupport.checked && arSupport.supported ? (
             <XR store={xrStore}>
-              <XrActiveSessionProbe sessionRef={xrNativeSessionRef} />
+              <ImmersivePassthroughSync />
+              <XrActiveSessionProbe sessionRef={xrNativeSessionRef} onHasNativeSession={onNativeXrSessionChanged} />
               {phase === 'landing' && <LandingXrGlReadyProbe onReady={onLandingXrGlReady} />}
               {webxrImmersiveUi ? (
                 <>
@@ -915,13 +1017,16 @@ function App() {
                     </Suspense>
                   )}
                   {phase === 'onboarding' && (
-                    <OnboardingHUD
-                      step={onboardingStep}
-                      onContinue={handleAdvanceOnboarding}
-                      onBeginVisit={handleBeginVisit}
-                    />
+                    <>
+                      <OnboardingHUD step={onboardingStep} onContinue={handleAdvanceOnboarding} />
+                      {onboardingStep === 3 && (
+                        <Suspense fallback={null}>
+                          <OnboardingBeginVisitButton3D onBeginVisit={handleBeginVisit} />
+                        </Suspense>
+                      )}
+                    </>
                   )}
-                  {phase === 'active' && (
+                  {showActiveImmersiveHud && (
                     <>
                       <WebXrSessionEndBar onEndSimulation={handleEndSimulation} />
                       <XRActiveFallback
@@ -942,11 +1047,14 @@ function App() {
                   {phase === 'xr-exiting' ? null : (
                     <>
                       {phase === 'onboarding' && (
-                        <OnboardingHUD
-                          step={onboardingStep}
-                          onContinue={handleAdvanceOnboarding}
-                          onBeginVisit={handleBeginVisit}
-                        />
+                        <>
+                          <OnboardingHUD step={onboardingStep} onContinue={handleAdvanceOnboarding} />
+                          {onboardingStep === 3 && (
+                            <Suspense fallback={null}>
+                              <OnboardingBeginVisitButton3D onBeginVisit={handleBeginVisit} />
+                            </Suspense>
+                          )}
+                        </>
                       )}
                       {phase === 'active' && (
                         <SimulatedHUD
@@ -967,11 +1075,14 @@ function App() {
           ) : (
             <>
               {phase === 'onboarding' && (
-                <OnboardingHUD
-                  step={onboardingStep}
-                  onContinue={handleAdvanceOnboarding}
-                  onBeginVisit={handleBeginVisit}
-                />
+                <>
+                  <OnboardingHUD step={onboardingStep} onContinue={handleAdvanceOnboarding} />
+                  {onboardingStep === 3 && (
+                    <Suspense fallback={null}>
+                      <OnboardingBeginVisitButton3D onBeginVisit={handleBeginVisit} />
+                    </Suspense>
+                  )}
+                </>
               )}
               {phase === 'active' && (
                 <SimulatedHUD

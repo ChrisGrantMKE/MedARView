@@ -4,7 +4,7 @@ import { Color } from 'three'
 
 import { DRILL_HEADER_W, HUD_MENU_ITEMS } from './menuData'
 import RoundedRect from './RoundedRect'
-import { hudTheme } from './hudTheme'
+import { hudTheme, xrUiPointerEventsType } from './hudTheme'
 
 const ROW_W = 0.3
 const ROW_H = 0.054
@@ -29,7 +29,7 @@ const TOGGLE_CORNER = Math.min(0.008, TOGGLE_SEG_H / 2 - 0.001)
 /** Padding around menu stack (~24px at reference scale; local menu units). */
 const MENU_BACKDROP_PAD = 0.024
 
-function OverlayToggleBar({ overlayEnabled, onSetOverlay }) {
+function OverlayToggleBar({ overlayEnabled, onSetOverlay, depthTest = true, interactionOrder }) {
   const track = new Color('#1a2838')
   const activeFill = new Color(hudTheme.toggleOn)
   const inactiveFill = new Color('#2a3544')
@@ -60,8 +60,10 @@ function OverlayToggleBar({ overlayEnabled, onSetOverlay }) {
         borderColor={hudTheme.border}
         borderOpacity={0.175}
         borderWidth={1}
+        depthTest={depthTest}
+        pointerEventsOrder={interactionOrder}
       />
-      <Text position={[-halfBar + 0.036, 0, 0.003]} anchorX="left" anchorY="middle" fontSize={0.014} color="#f5f9ff">
+      <Text position={[-halfBar + 0.036, 0, 0.003]} anchorX="left" anchorY="middle" fontSize={0.014} color="#f5f9ff" depthTest={depthTest}>
         Overlay
       </Text>
 
@@ -76,13 +78,20 @@ function OverlayToggleBar({ overlayEnabled, onSetOverlay }) {
           borderOpacity={overlayEnabled ? 0.25 : 0.14}
           borderWidth={1}
           z={0}
+          depthTest={depthTest}
+          pointerEventsOrder={interactionOrder}
         />
-        <Text position={[0, 0, 0.0015]} anchorX="center" anchorY="middle" fontSize={0.011} color={overlayEnabled ? segTextActive : segTextMuted}>
+        <Text position={[0, 0, 0.0015]} anchorX="center" anchorY="middle" fontSize={0.011} color={overlayEnabled ? segTextActive : segTextMuted} depthTest={depthTest}>
           On
         </Text>
-        <mesh position={[0, 0, 0.004]} onPointerDown={(e) => pick(e, true)}>
+        <mesh
+          position={[0, 0, 0.004]}
+          pointerEventsType={xrUiPointerEventsType}
+          pointerEventsOrder={interactionOrder}
+          onClick={(e) => pick(e, true)}
+        >
           <planeGeometry args={[TOGGLE_SEG_W, TOGGLE_SEG_H]} />
-          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+          <meshBasicMaterial transparent opacity={0} depthWrite={false} depthTest={depthTest} />
         </mesh>
       </group>
 
@@ -97,13 +106,20 @@ function OverlayToggleBar({ overlayEnabled, onSetOverlay }) {
           borderOpacity={!overlayEnabled ? 0.25 : 0.14}
           borderWidth={1}
           z={0}
+          depthTest={depthTest}
+          pointerEventsOrder={interactionOrder}
         />
-        <Text position={[0, 0, 0.0015]} anchorX="center" anchorY="middle" fontSize={0.011} color={!overlayEnabled ? segTextActive : segTextMuted}>
+        <Text position={[0, 0, 0.0015]} anchorX="center" anchorY="middle" fontSize={0.011} color={!overlayEnabled ? segTextActive : segTextMuted} depthTest={depthTest}>
           Off
         </Text>
-        <mesh position={[0, 0, 0.004]} onPointerDown={(e) => pick(e, false)}>
+        <mesh
+          position={[0, 0, 0.004]}
+          pointerEventsType={xrUiPointerEventsType}
+          pointerEventsOrder={interactionOrder}
+          onClick={(e) => pick(e, false)}
+        >
           <planeGeometry args={[TOGGLE_SEG_W, TOGGLE_SEG_H]} />
-          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+          <meshBasicMaterial transparent opacity={0} depthWrite={false} depthTest={depthTest} />
         </mesh>
       </group>
     </group>
@@ -111,7 +127,7 @@ function OverlayToggleBar({ overlayEnabled, onSetOverlay }) {
 }
 
 /** Full-width selected row + page SVGs (design “submenu” art). */
-function HudMenuDrillView({ item, firstRowY, rowW, onHeaderClick }) {
+function HudMenuDrillView({ item, firstRowY, rowW, onHeaderClick, depthTest = true, interactionOrder }) {
   const [headerMap, pageMap] = useTexture([item.drillSelectedSrc, item.drillPageSrc])
   const headerH = rowW * (item.drillHeaderH / DRILL_HEADER_W)
   const pageH = rowW * (item.drillPageH / DRILL_HEADER_W)
@@ -120,27 +136,26 @@ function HudMenuDrillView({ item, firstRowY, rowW, onHeaderClick }) {
   const pageCenterY = headerCenterY - headerH / 2 - gap - pageH / 2
   const hintY = pageCenterY - pageH / 2 - 0.022
 
+  const pickHeader = (e) => {
+    e.stopPropagation()
+    onHeaderClick()
+  }
+
   return (
     <>
-      <group
-        position={[0, headerCenterY, 0.004]}
-        onClick={(e) => {
-          e.stopPropagation()
-          onHeaderClick()
-        }}
-      >
-        <mesh>
+      <group position={[0, headerCenterY, 0.004]} pointerEventsType={xrUiPointerEventsType} pointerEventsOrder={interactionOrder}>
+        <mesh onClick={pickHeader}>
           <planeGeometry args={[rowW, headerH]} />
-          <meshBasicMaterial map={headerMap} transparent depthWrite depthTest toneMapped={false} />
+          <meshBasicMaterial map={headerMap} transparent depthWrite depthTest={depthTest} toneMapped={false} />
         </mesh>
       </group>
       <group position={[0, pageCenterY, 0.003]}>
         <mesh>
           <planeGeometry args={[rowW, pageH]} />
-          <meshBasicMaterial map={pageMap} transparent depthWrite depthTest toneMapped={false} />
+          <meshBasicMaterial map={pageMap} transparent depthWrite depthTest={depthTest} toneMapped={false} />
         </mesh>
       </group>
-      <Text position={[0, hintY, 0.004]} anchorX="center" anchorY="middle" fontSize={0.011} color="#7eb0d4">
+      <Text position={[0, hintY, 0.004]} anchorX="center" anchorY="middle" fontSize={0.011} color="#7eb0d4" depthTest={depthTest}>
         Tap the header bar to return to the menu
       </Text>
     </>
@@ -148,7 +163,7 @@ function HudMenuDrillView({ item, firstRowY, rowW, onHeaderClick }) {
 }
 
 /** List: procedural row chrome; icons from `assets/SVGS` only. */
-function HudMenuListView({ firstRowY, listHintY, onToggleItem }) {
+function HudMenuListView({ firstRowY, listHintY, onToggleItem, depthTest = true, interactionOrder }) {
   const iconUrls = useMemo(() => HUD_MENU_ITEMS.map((i) => i.iconSrc), [])
   const iconTextures = useTexture(iconUrls)
 
@@ -161,15 +176,13 @@ function HudMenuListView({ firstRowY, listHintY, onToggleItem }) {
         const y = firstRowY - index * (ROW_H + ROW_GAP)
         const tex = iconTextures[index]
 
+        const pickRow = (e) => {
+          e.stopPropagation()
+          onToggleItem(item.id)
+        }
+
         return (
-          <group
-            key={item.id}
-            position={[0, y, 0]}
-            onClick={(e) => {
-              e.stopPropagation()
-              onToggleItem(item.id)
-            }}
-          >
+          <group key={item.id} position={[0, y, 0]} pointerEventsType={xrUiPointerEventsType} pointerEventsOrder={interactionOrder}>
             <RoundedRect
               width={ROW_W}
               height={ROW_H}
@@ -180,21 +193,52 @@ function HudMenuListView({ firstRowY, listHintY, onToggleItem }) {
               borderOpacity={0.325}
               borderWidth={1}
               z={0}
+              depthTest={depthTest}
+              pointerEventsOrder={interactionOrder}
+              pointerEventsType={xrUiPointerEventsType}
+              onClick={pickRow}
             />
-            <mesh position={[ICON_SLOT_X, 0, 0.004]}>
+            <mesh
+              position={[ICON_SLOT_X, 0, 0.004]}
+              pointerEventsOrder={interactionOrder}
+              pointerEventsType={xrUiPointerEventsType}
+              onClick={pickRow}
+            >
               <planeGeometry args={[ICON_PLANE, ICON_PLANE]} />
-              <meshBasicMaterial map={tex} transparent depthWrite depthTest toneMapped={false} />
+              <meshBasicMaterial map={tex} transparent depthWrite depthTest={depthTest} toneMapped={false} />
             </mesh>
-            <Text position={[-0.092, 0.007, 0.005]} anchorX="left" anchorY="middle" fontSize={0.015} color="#ffffff" maxWidth={0.2}>
+            <Text
+              position={[-0.092, 0.007, 0.005]}
+              anchorX="left"
+              anchorY="middle"
+              fontSize={0.015}
+              color="#ffffff"
+              maxWidth={0.2}
+              depthTest={depthTest}
+              pointerEventsOrder={interactionOrder}
+              pointerEventsType={xrUiPointerEventsType}
+              onClick={pickRow}
+            >
               {item.label}
             </Text>
-            <Text position={[-0.092, -0.01, 0.005]} anchorX="left" anchorY="middle" fontSize={0.011} color="#d8e6f5" maxWidth={0.2}>
+            <Text
+              position={[-0.092, -0.01, 0.005]}
+              anchorX="left"
+              anchorY="middle"
+              fontSize={0.011}
+              color="#d8e6f5"
+              maxWidth={0.2}
+              depthTest={depthTest}
+              pointerEventsOrder={interactionOrder}
+              pointerEventsType={xrUiPointerEventsType}
+              onClick={pickRow}
+            >
               {item.subtitle}
             </Text>
           </group>
         )
       })}
-      <Text position={[0, listHintY, 0.002]} anchorX="center" anchorY="middle" fontSize={0.011} color="#7eb0d4">
+      <Text position={[0, listHintY, 0.002]} anchorX="center" anchorY="middle" fontSize={0.011} color="#7eb0d4" depthTest={depthTest}>
         Tap a row to open
       </Text>
     </>
@@ -208,6 +252,10 @@ export default function HudMenuPanel({
   onSetOverlay,
   selectedMenuId,
   onToggleItem,
+  /** Set false for WebXR passthrough so menu draws over scene depth. */
+  depthTest = true,
+  /** Higher = prefer ray hits over other HUD layers (e.g. 800 under end pill 1000). */
+  interactionOrder,
 }) {
   const { firstRowY, listHintY } = useMemo(() => {
     const overlayBottom = OVERLAY_CENTER_Y - OVERLAY_H / 2
@@ -262,9 +310,16 @@ export default function HudMenuPanel({
           borderOpacity={0.22}
           borderWidth={1}
           z={0}
+          depthTest={depthTest}
+          raycastDisabled
         />
       </group>
-      <OverlayToggleBar overlayEnabled={overlayEnabled} onSetOverlay={onSetOverlay} />
+      <OverlayToggleBar
+        overlayEnabled={overlayEnabled}
+        onSetOverlay={onSetOverlay}
+        depthTest={depthTest}
+        interactionOrder={interactionOrder}
+      />
 
       {overlayEnabled && drillItem ? (
         <HudMenuDrillView
@@ -272,11 +327,19 @@ export default function HudMenuPanel({
           firstRowY={firstRowY}
           rowW={ROW_W}
           onHeaderClick={() => onToggleItem(drillItem.id)}
+          depthTest={depthTest}
+          interactionOrder={interactionOrder}
         />
       ) : null}
 
       {overlayEnabled && !drillItem ? (
-        <HudMenuListView firstRowY={firstRowY} listHintY={listHintY} onToggleItem={onToggleItem} />
+        <HudMenuListView
+          firstRowY={firstRowY}
+          listHintY={listHintY}
+          onToggleItem={onToggleItem}
+          depthTest={depthTest}
+          interactionOrder={interactionOrder}
+        />
       ) : null}
     </group>
   )
