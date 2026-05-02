@@ -1148,7 +1148,9 @@ function App() {
       {showCanvas && (
         <div
           className={
-            phase === 'landing' && arSupport.checked && arSupport.supported ? 'landing-xr-bootstrap' : undefined
+            phase === 'landing' && arSupport.checked && arSupport.supported
+              ? 'landing-xr-bootstrap'
+              : 'app-canvas-host'
           }
         >
           <Canvas
