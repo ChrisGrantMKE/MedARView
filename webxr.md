@@ -125,3 +125,17 @@ Aligns with Meta’s underlay model: **transparent GL clear** and **`scene.backg
 **Why controls differ by screen:** `@react-three/xr` wires pointers only under an immersive session and `XR`-bounded scene tree. If `xrStore.session` lags `gl.xr.getSession()` after enter AR, the app keeps the immersive branch using **`hasNativeXrSession`** so onboarding/active HUD stay on the path that receives controller/hand rays.
 
 **HUD tuning:** Head‑locked panels often need **`depthTest={false}`** so Quest environment depth does not hide UI. **`pointerEventsType={{ deny: 'grab' }}`** (squeeze vs ray select) is applied on HUD pills per [pmndrs interactions](https://docs.pmnd.rs/xr/tutorials/interactions).
+
+## 8. Microphone & streamed dictation (MedARView)
+
+**WebXR does not expose a separate “headset mic” API.** Audio capture uses the same `navigator.mediaDevices.getUserMedia({ audio: true })` as any secure web page. On Quest Browser, the browser/OS route that stream to the device microphone (wearer); there is no extra WebXR permission beyond normal mic + immersive session.
+
+**Meta Quest Browser** usually does **not** implement the **Web Speech API** (`SpeechRecognition`). MedARView falls back to **streaming PCM/WebM** over a **WebSocket** to `server/speechGateway.mjs` (Google Cloud Speech streaming), tunneled in dev via Vite **`/api/gateway-ws`** so the headset never calls `localhost` on the PC.
+
+**Requirements:**
+
+- **HTTPS** (or localhost) for `getUserMedia` and WebXR.
+- A **user gesture** (tap **Enable headset mic**) before capture starts; immersive UI uses **`XRDomOverlay`** so the control is visible in-headset, not only on the flat page.
+- **Gateway:** `MEDARVIEW_ENABLE_GOOGLE_SPEECH=true`, FFmpeg on PATH, Google credentials, and (for production builds) **`VITE_GATEWAY_WS_URL`** so the WebSocket URL points at the machine running the gateway.
+
+See **`speechConfig.js`**, **`gatewayStreamingDictation.js`**, and **`README.md`** / **`.env.example`** for env vars.

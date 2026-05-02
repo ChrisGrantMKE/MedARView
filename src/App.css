@@ -36,6 +36,35 @@
   top: clamp(5rem, 12vh, 9rem);
 }
 
+/* Stacked under “Enter Medical AR HUD” in flat / pre-immersive view (1 rem gap) */
+.mic-enable-btn--under-ar {
+  margin-top: 1rem;
+}
+
+.mic-enable-btn {
+  border: 1px solid rgba(100, 200, 150, 0.55);
+  background: rgba(8, 40, 28, 0.85);
+  color: #b8f5d0;
+  font-weight: 600;
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+  border-radius: 999px;
+  padding: 0.65rem 1.25rem;
+  cursor: pointer;
+  text-align: center;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  backdrop-filter: blur(8px);
+}
+
+.mic-enable-btn:hover {
+  background: rgba(12, 55, 38, 0.92);
+}
+
+.mic-enable-btn:focus-visible {
+  outline: 2px solid #7ecfaa;
+  outline-offset: 2px;
+}
+
 /* Runtime lines: lower-left (replaces former 3D mic block on demo setup) */
 .ar-controls__diagnostics {
   position: absolute;
@@ -214,6 +243,11 @@
   font-size: 0.78rem;
   line-height: 1.45;
   text-align: left;
+}
+
+.runtime-diagnostics > div {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 /* ─── Session End Screen ──────────────────────────────────────────── */

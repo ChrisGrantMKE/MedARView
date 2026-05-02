@@ -255,7 +255,7 @@ function OnboardingHUD({
         lineHeight={1.5}
         color="#f3f8ff"
       >
-        {`This simulation requires 2 people.\n\nImagine you have entered the visit room wearing your glasses and the patient is having vitals taken.\n\nWith a colleague sitting across from you, say out loud:\n\n"MED VIEW Begin Visit"`}
+        {`This simulation requires 2 people.\n\nImagine you have entered the visit room wearing your glasses and the patient is having vitals taken.\n\nWith a colleague sitting across from you, follow the on-screen steps to begin the visit.`}
       </Text>
 
       {onBeginVisit ? (
@@ -305,10 +305,6 @@ function OnboardingHUD({
       </Text>
       <Text position={[0.29, -0.312, 0]} anchorX="center" anchorY="middle" fontSize={0.014 * PATIENT_SCALE_MUL} color="#3a7aaa">
         (~8 ft / 2.4 m away)
-      </Text>
-
-      <Text position={[0.29, -0.355, 0]} anchorX="center" anchorY="middle" fontSize={0.016 * PATIENT_SCALE_MUL} maxWidth={0.42 * PATIENT_SCALE_MUL} textAlign="center" color="#9dbfe8">
-        Tap “Begin visit” under the instructions when ready.
       </Text>
     </group>
   )

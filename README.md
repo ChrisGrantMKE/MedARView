@@ -1,4 +1,4 @@
-Run one command by mode: npm run stack:https:ui-only for HTTPS UI-only LAN testing, or npm run stack:https:full-dictation for HTTPS full dictation + gateway.
+Run one command by mode: `npm run ui` (HTTPS UI-only + gateway without Google STT) or `npm run full` (HTTPS + dictation env + gateway with `MEDARVIEW_ENABLE_GOOGLE_SPEECH=true`). Both processes log as **`[vite]`** and **`[gateway]`**.
 
 # MedARView
 
@@ -30,6 +30,16 @@ Install dependencies:
 ```bash
 npm install
 ```
+
+Copy `.env.example` to `.env` and fill in `VITE_*` / `MEDARVIEW_*` / `GOOGLE_APPLICATION_CREDENTIALS` as needed. The speech gateway loads the same `.env` from the project root.
+
+**`npm run full`** starts (1) Vite with HTTPS + dictation flags and (2) `server/speechGateway.mjs` with Google Speech enabled. For live WebSocket STT you still need valid **`GOOGLE_APPLICATION_CREDENTIALS`**, **`MEDARVIEW_GOOGLE_RECOGNIZER`**, and FFmpeg on `PATH`. External speaker attribution uses **`VITE_SPEAKER_API_URL`** pointing at your POST endpoint (the bundled gateway’s `POST /diarize` is not that contract yet—see [Dictation / Attribution API Notes](#dictation--attribution-api-notes)).
+
+**Session save (“Save Visit Records”)** in development posts to **`/api/gateway`** on the Vite host; Vite proxies that to `127.0.0.1:8787` so Quest on `https://<LAN>:5173` does not call `localhost` (which would target the headset). For a production build accessed from another device, set **`VITE_GATEWAY_URL`** to `http://<PC-LAN-IP>:8787` (or your deployed gateway URL) before `npm run build`.
+
+**Browser dictation** uses the Web Speech API (`SpeechRecognition`). Meta Quest Browser often does not expose it, so the HUD may show mic unsupported—try Chrome on desktop for that path, or rely on future gateway streaming audio.
+
+**`npm run speech:gateway`** is the same as **`npm run gateway:full-dictation`** (gateway only, Google flag on).
 
 Run dev server:
 

@@ -1,7 +1,5 @@
 import { speechConfig } from './speechConfig'
 
-const API_URL = import.meta.env.VITE_SPEAKER_API_URL
-
 const doctorKeywords = [
   'assessment',
   'plan',
@@ -57,7 +55,7 @@ async function callApiAttribution({ utterance, conversationTail, previousSpeaker
     return null
   }
 
-  if (!API_URL) {
+  if (!speechConfig.speakerApiUrl) {
     return null
   }
 
@@ -65,7 +63,7 @@ async function callApiAttribution({ utterance, conversationTail, previousSpeaker
   const timeout = setTimeout(() => controller.abort(), 1200)
 
   try {
-    const response = await fetch(API_URL, {
+    const response = await fetch(speechConfig.speakerApiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

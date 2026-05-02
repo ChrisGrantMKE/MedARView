@@ -26,6 +26,23 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5173,
     https: httpsConfig,
+    /**
+     * Browser on Quest/phone hits `https://<LAN>:5173`; `fetch('http://localhost:8787')` targets the device,
+     * not your PC. Proxy keeps save-visit + same-origin during dev.
+     */
+    proxy: {
+      '/api/gateway': {
+        target: 'http://127.0.0.1:8787',
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/api\/gateway/, ''),
+      },
+      '/api/gateway-ws': {
+        target: 'http://127.0.0.1:8787',
+        changeOrigin: true,
+        ws: true,
+        rewrite: (p) => p.replace(/^\/api\/gateway-ws/, ''),
+      },
+    },
     hmr: hmrHost
       ? {
           host: hmrHost,
@@ -39,5 +56,18 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 4173,
     https: httpsConfig,
+    proxy: {
+      '/api/gateway': {
+        target: 'http://127.0.0.1:8787',
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/api\/gateway/, ''),
+      },
+      '/api/gateway-ws': {
+        target: 'http://127.0.0.1:8787',
+        changeOrigin: true,
+        ws: true,
+        rewrite: (p) => p.replace(/^\/api\/gateway-ws/, ''),
+      },
+    },
   },
 })

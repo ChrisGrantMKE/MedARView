@@ -13,7 +13,14 @@ import RoundedRect from './hud/RoundedRect'
 import HudMenuPanel from './hud/HudMenuPanel'
 import { xrUiPointerEventsType } from './hud/hudTheme'
 import { inferSpeaker } from './speakerAttribution'
-import { speechConfig, getSpeechProviderLabel, shouldUseExternalDictation } from './speechConfig'
+import { startGatewayDictation, mapGatewaySpeakerLabel } from './gatewayStreamingDictation'
+import {
+  speechConfig,
+  getSpeechProviderLabel,
+  shouldUseExternalDictation,
+  browserSpeechRecognitionAvailable,
+  getGatewaySttWebSocketUrl,
+} from './speechConfig'
 import { formatBudgetSummary, getSpeechBudgetSnapshot, recordSpeechSession } from './speechBudget'
 import './App.css'
 
@@ -192,6 +199,8 @@ const XR_MENU_VISUAL_SCALE = 0.8
  * Used to align menu right edge with the End Simulation pill’s left edge.
  */
 const HUD_MENU_BACKDROP_W = 0.3 + 2 * 0.024
+const GATEWAY_MIC_BTN_W = 0.22
+const GATEWAY_MIC_BTN_H = 0.036
 
 /**
  * Immersive AR visit HUD only: floating panels over passthrough (no SimulatedHUD video plane / scene fill).
@@ -201,11 +210,17 @@ function XRActiveFallback({
   onEndSimulation,
   micStatus,
   speechSupported,
+  browserSrAvailable,
+  headsetGatewayStreaming,
+  dictationEnabled,
   patientLiveCaption,
   speechProviderLabel,
   speakerAttributionStatus,
   budgetStatus,
   lastHeardCommand,
+  showGatewayMicHud,
+  gatewayMicActive,
+  onGatewayMicToggle,
 }) {
   const groupRef = useRef(null)
   const { camera } = useThree()
@@ -213,6 +228,10 @@ function XRActiveFallback({
   const [overlayEnabled, setOverlayEnabled] = useState(true)
 
   const endSimR = useMemo(() => panelRadiusForSize(WEBXR_END_W, WEBXR_END_H, 0.014), [])
+  const gatewayMicFillR = useMemo(
+    () => panelRadiusForSize(GATEWAY_MIC_BTN_W, GATEWAY_MIC_BTN_H, 0.012),
+    [],
+  )
   const dictW = 0.34
   const dictH = 0.26
   const dictR = useMemo(() => panelRadiusForSize(0.34, 0.26), [])
@@ -267,6 +286,16 @@ function XRActiveFallback({
 
   const dictPos = [0.31, -0.165, 0]
   const endPos = [0, -0.288, 0]
+  /** Top-centered above End simulation — horizontal center (x=0), gap below mic = gap above End pill top. */
+  const GATEWAY_MIC_GAP_ABOVE_END = 0.03
+  const endPillTopY = endPos[1] + WEBXR_END_H / 2
+  const gatewayMicCenterY = endPillTopY + GATEWAY_MIC_GAP_ABOVE_END + GATEWAY_MIC_BTN_H / 2
+  const gatewayMicPos = [0, gatewayMicCenterY, 0.018]
+
+  const pickGatewayMic = (e) => {
+    e.stopPropagation()
+    queueMicrotask(() => onGatewayMicToggle?.())
+  }
 
   const lx = -dictW / 2 + 0.02
   const ty = dictH / 2 - 0.02
@@ -274,17 +303,50 @@ function XRActiveFallback({
   return (
     <group ref={groupRef} renderOrder={1000}>
       <Suspense fallback={null}>
-        <HudMenuPanel
-          position={menuLayout.position}
-          scale={menuLayout.scale}
-          overlayEnabled={overlayEnabled}
-          onSetOverlay={setOverlayEnabled}
-          selectedMenuId={selectedMenuId}
-          onToggleItem={(id) => setSelectedMenuId((prev) => (prev === id ? null : id))}
-          depthTest={false}
-          interactionOrder={800}
-        />
+        <group position={menuLayout.position} scale={menuLayout.scale}>
+          <HudMenuPanel
+            position={[0, 0, 0]}
+            scale={1}
+            overlayEnabled={overlayEnabled}
+            onSetOverlay={setOverlayEnabled}
+            selectedMenuId={selectedMenuId}
+            onToggleItem={(id) => setSelectedMenuId((prev) => (prev === id ? null : id))}
+            depthTest={false}
+            interactionOrder={800}
+          />
+        </group>
       </Suspense>
+
+      {showGatewayMicHud ? (
+        <group position={gatewayMicPos}>
+          <RoundedRect
+            width={GATEWAY_MIC_BTN_W}
+            height={GATEWAY_MIC_BTN_H}
+            radius={gatewayMicFillR}
+            color="#0b5c3a"
+            opacity={0.94}
+            borderColor="#5ecf8f"
+            borderOpacity={0.45}
+            borderWidth={1}
+            z={0}
+            depthTest={false}
+            raycastDisabled
+          />
+          <Text position={[0, 0, 0.003]} anchorX="center" anchorY="middle" fontSize={0.019} color="#a8f5d0" depthTest={false}>
+            {gatewayMicActive ? 'Stop mic' : 'Enable mic'}
+          </Text>
+          {/* Single hit target — avoid onClick + onPointerDown (double toggle) and Text stealing rays */}
+          <mesh
+            position={[0, 0, 0.006]}
+            pointerEventsOrder={850}
+            pointerEventsType={xrUiPointerEventsType}
+            onPointerDown={pickGatewayMic}
+          >
+            <planeGeometry args={[GATEWAY_MIC_BTN_W * 1.08, GATEWAY_MIC_BTN_H * 1.15]} />
+            <meshBasicMaterial transparent opacity={0} depthWrite={false} depthTest={false} />
+          </mesh>
+        </group>
+      ) : null}
 
       <group position={dictPos}>
         <RoundedRect
@@ -302,8 +364,14 @@ function XRActiveFallback({
         <Text position={[lx, ty, 0.002]} anchorX="left" anchorY="top" fontSize={0.017} color="#cfe8ff" depthTest={false}>
           DICTATION
         </Text>
-        <Text position={[lx, ty - 0.03, 0.002]} anchorX="left" anchorY="top" fontSize={0.011} color="#9dbfe8" depthTest={false}>
-          {`Mic: ${speechSupported ? micStatus : 'unsupported'}`}
+        <Text position={[lx, ty - 0.03, 0.002]} anchorX="left" anchorY="top" fontSize={0.011} color="#9dbfe8" maxWidth={dictW - 0.04} depthTest={false}>
+          {browserSrAvailable
+            ? `Web Speech: ${speechSupported ? micStatus : 'starting…'}`
+            : headsetGatewayStreaming
+              ? `Gateway STT: ${micStatus}`
+              : dictationEnabled
+                ? 'No browser SR — tap Enable mic (top center)'
+                : 'Dictation off (UI-only)'}
         </Text>
         <Text position={[lx, ty - 0.05, 0.002]} anchorX="left" anchorY="top" fontSize={0.01} color="#8af3d1" maxWidth={dictW - 0.04} depthTest={false}>
           {speakerAttributionStatus || 'Attribution: --'}
@@ -381,6 +449,8 @@ function App() {
   const [micPermission, setMicPermission] = useState('unknown')
   const [micStatus, setMicStatus] = useState('idle')
   const [lastHeardCommand, setLastHeardCommand] = useState('')
+  /** Quest / no Web Speech API: user taps to stream mic to speech gateway WebSocket STT */
+  const [headsetDictationActive, setHeadsetDictationActive] = useState(false)
   const [patientLiveCaption, setPatientLiveCaption] = useState('Awaiting patient speech...')
   const [speakerAttributionStatus, setSpeakerAttributionStatus] = useState('Awaiting speech...')
   const [budgetSnapshot, setBudgetSnapshot] = useState(() => getSpeechBudgetSnapshot())
@@ -546,9 +616,16 @@ function App() {
 
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
     if (!SR) {
-      setSpeechSupported(false)
-      setMicStatus('error')
-      setLastHeardCommand('SpeechRecognition API unavailable in this browser.')
+      setSpeechSupported(headsetDictationActive)
+      if (headsetDictationActive) {
+        // Lift stale “disabled” from simulated / dictation-off sessions — gateway HUD would show “Gateway STT: disabled”.
+        setMicStatus((m) => (m === 'disabled' ? 'starting' : m))
+      } else {
+        setMicStatus('idle')
+        setLastHeardCommand(
+          'No Web Speech API — tap “Enable mic” (below Enter AR when flat, or top center when in AR) to stream audio to the speech gateway.',
+        )
+      }
       return
     }
 
@@ -686,7 +763,109 @@ function App() {
         // ignore
       }
     }
-  }, [dictationEnabled, budgetSnapshot.exhausted, arSupport.supported, arSupport.checked, phase])
+  }, [
+    dictationEnabled,
+    budgetSnapshot.exhausted,
+    arSupport.supported,
+    arSupport.checked,
+    phase,
+    headsetDictationActive,
+  ])
+
+  useEffect(() => {
+    if (phase === 'ended' || phase === 'xr-exiting') {
+      setHeadsetDictationActive(false)
+    }
+  }, [phase])
+
+  useEffect(() => {
+    if (!headsetDictationActive) return
+    if (!dictationEnabled) return
+    if (browserSpeechRecognitionAvailable()) {
+      setHeadsetDictationActive(false)
+      return
+    }
+    if (arSupport.checked && !arSupport.supported && phase === 'active') {
+      setHeadsetDictationActive(false)
+      return
+    }
+    if (phase !== 'active') return
+
+    let cancelled = false
+    let stopSession = () => {}
+
+    void (async () => {
+      const url = getGatewaySttWebSocketUrl()
+      if (!url) {
+        setLastHeardCommand(
+          'Gateway STT WebSocket URL missing. For dev use `npm run full`; for production set VITE_GATEWAY_WS_URL before build.',
+        )
+        setHeadsetDictationActive(false)
+        return
+      }
+      setMicStatus((m) => (m === 'disabled' ? 'starting' : m))
+      try {
+        const { stop } = await startGatewayDictation({
+          wsUrl: url,
+          onMessage: (msg) => {
+            if (cancelled) return
+            if (msg.type === 'error') {
+              setLastHeardCommand(msg.message || 'Gateway STT error')
+              setMicStatus('error')
+              return
+            }
+            if (msg.type === 'ready') {
+              setMicStatus('listening')
+              setSpeechSupported(true)
+              setMicPermission('granted')
+              setLastHeardCommand('Headset mic streaming to gateway…')
+              return
+            }
+            if (msg.type !== 'transcript' || !msg.text) return
+            const text = String(msg.text).trim()
+            if (!text) return
+            setLastHeardCommand(text)
+            if (!msg.isFinal) return
+
+            const speaker = mapGatewaySpeakerLabel(msg.speaker, speakerRef.current)
+            const conf =
+              typeof msg.confidence === 'number' ? Math.round(msg.confidence * 100) : null
+            setActiveSpeaker(speaker)
+            setSpeakerAttributionStatus(
+              conf != null ? `google-stt | ${speaker} (${conf}%)` : `google-stt | ${speaker}`,
+            )
+            setConversation((prev) => [
+              ...prev,
+              { id: Date.now(), speaker, text, timestamp: Date.now() },
+            ])
+            if (speaker === 'Patient') {
+              setPatientLiveCaption(text)
+            }
+          },
+          onError: (err) => {
+            if (!cancelled) {
+              setLastHeardCommand(err?.message || 'Headset stream failed')
+              setMicStatus('error')
+              setHeadsetDictationActive(false)
+            }
+          },
+        })
+        stopSession = stop
+      } catch (e) {
+        if (!cancelled) {
+          const msg = e instanceof Error ? e.message : String(e)
+          setLastHeardCommand(msg)
+          setMicStatus('error')
+          setHeadsetDictationActive(false)
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+      stopSession()
+    }
+  }, [headsetDictationActive, dictationEnabled, arSupport.checked, arSupport.supported, phase])
 
   const handleAdvanceOnboarding = () => setOnboardingStep(prev => prev + 1)
 
@@ -870,6 +1049,33 @@ function App() {
     phase !== 'ended' &&
     (phase !== 'landing' || (arSupport.checked && arSupport.supported))
 
+  const browserSrAvailable = browserSpeechRecognitionAvailable()
+  /** True during active visit while WebXR session is up — mic control moves to top-centered dom-overlay. */
+  const inActiveXrSession = phase === 'active' && (xrSession != null || hasNativeXrSession)
+  const showEnableMic2d = dictationEnabled && phase === 'active' && !browserSrAvailable && !inActiveXrSession
+  const showGatewayMicHud = dictationEnabled && phase === 'active' && !browserSrAvailable && inActiveXrSession
+
+  const handleToggleHeadsetMic = useCallback(() => {
+    if (headsetDictationActive) {
+      setHeadsetDictationActive(false)
+      setMicStatus((m) => (m === 'listening' || m === 'starting' ? 'idle' : m))
+      return
+    }
+    if (!getGatewaySttWebSocketUrl()) {
+      setLastHeardCommand(
+        'No STT WebSocket URL. Use https://<your-PC-LAN>:5173 with npm run full, or set VITE_GATEWAY_WS_URL before build.',
+      )
+      return
+    }
+    setMicStatus('starting')
+    setLastHeardCommand('Requesting microphone and connecting to gateway…')
+    setPatientLiveCaption((c) => (String(c).includes('Dictation disabled') ? 'Awaiting patient speech...' : c))
+    setSpeakerAttributionStatus((s) =>
+      String(s).includes('Dictation disabled') ? 'Awaiting speech...' : s,
+    )
+    setHeadsetDictationActive(true)
+  }, [headsetDictationActive])
+
   return (
     <main
       className={`app-shell${simulatedActiveUi ? ' app-shell--simulated' : ''}${
@@ -902,16 +1108,28 @@ function App() {
                 return 'Enter Medical AR HUD'
               }}
             </ARButton>
+            {showEnableMic2d && (
+              <button type="button" className="mic-enable-btn mic-enable-btn--under-ar" onClick={handleToggleHeadsetMic}>
+                {headsetDictationActive ? 'Stop mic' : 'Enable mic'}
+              </button>
+            )}
           </div>
           )}
           <div className="ar-controls ar-controls__diagnostics runtime-diagnostics" role="status" aria-live="polite">
             <div>{`AR: ${arSupport.reason}`}</div>
-            <div>{`Mic: ${speechSupported ? `${micStatus} | permission: ${micPermission}` : 'unsupported'}`}</div>
-            <div>{`Dictation enabled: ${dictationEnabled ? 'yes' : 'no (UI-only mode)'}`}</div>
-            <div>{`External dictation: ${externalDictationActive ? 'enabled' : 'disabled'}`}</div>
-            <div>{`Dictation provider: ${speechProviderLabel}`}</div>
+            <div>
+              {browserSrAvailable
+                ? `Browser speech (Web Speech API): ${micStatus} · mic permission: ${micPermission}`
+                : dictationEnabled
+                  ? `Browser speech: n/a (Quest) — gateway STT: ${headsetDictationActive ? micStatus : 'off'} · tap Enable mic`
+                  : 'Browser speech: n/a (Quest) — dictation off (UI-only); mic buttons hidden'}
+            </div>
+            <div>{`Dictation flags: enabled=${dictationEnabled ? 'yes' : 'no'} · external attribution=${externalDictationActive ? 'yes' : 'no'}`}</div>
+            <div>{`Provider label (intent): ${speechProviderLabel}`}</div>
+            <div>{`Speaker POST API: ${speechConfig.speakerApiUrl || 'not set — using keyword/heuristic attribution'}`}</div>
             <div>{`Speech budget: ${budgetStatus}`}</div>
-            <div>{`Dictation API: ${speechConfig.dictationApiUrl || 'not configured'}`}</div>
+            <div>{`Streaming dictation URL (optional / future): ${speechConfig.dictationApiUrl || 'not set — OK; live SR does not use this env var yet'}`}</div>
+            <div>{`Headset STT WebSocket: ${getGatewaySttWebSocketUrl() || '(not built — set VITE_GATEWAY_WS_URL for prod)'}`}</div>
           </div>
         </>
       )}
@@ -978,11 +1196,17 @@ function App() {
                         onEndSimulation={handleEndSimulation}
                         micStatus={micStatus}
                         speechSupported={speechSupported}
+                        browserSrAvailable={browserSrAvailable}
+                        headsetGatewayStreaming={headsetDictationActive}
+                        dictationEnabled={dictationEnabled}
                         patientLiveCaption={patientLiveCaption}
                         speechProviderLabel={speechProviderLabel}
                         speakerAttributionStatus={speakerAttributionStatus}
                         budgetStatus={budgetStatus}
                         lastHeardCommand={lastHeardCommand}
+                        showGatewayMicHud={showGatewayMicHud}
+                        gatewayMicActive={headsetDictationActive}
+                        onGatewayMicToggle={handleToggleHeadsetMic}
                       />
                     </>
                   )}
