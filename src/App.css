@@ -253,10 +253,50 @@
 }
 
 .session-end.review {
+  flex-direction: column;
   align-items: stretch;
   padding: 1.5rem;
+  gap: 0;
+  overflow: hidden;
+}
+
+.session-end-review-main {
+  display: flex;
+  flex: 1;
+  min-height: 0;
   gap: 1.25rem;
   overflow: hidden;
+}
+
+.session-end-footer {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 1.25rem 1rem 1rem;
+  margin-top: 0.5rem;
+  border-top: 1px solid rgba(100, 180, 255, 0.18);
+}
+
+.session-end-footer__btn {
+  padding: 0.65rem 1.75rem;
+  font-size: 1rem;
+  font-weight: 600;
+  font-family: inherit;
+  color: #060d14;
+  background: #cfe8ff;
+  border: 1px solid rgba(172, 203, 255, 0.55);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.session-end-footer__btn:hover {
+  background: #e8f4ff;
+}
+
+.session-end-footer__btn:focus-visible {
+  outline: 2px solid #8eb4e8;
+  outline-offset: 2px;
 }
 
 .review-panel {

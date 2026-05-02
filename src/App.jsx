@@ -103,15 +103,6 @@ function ImmersivePassthroughSync() {
   return null
 }
 
-/** Lets the landing page enable “Enter AR mode” only after `<XR>` has wired the WebGL XR manager. */
-function LandingXrGlReadyProbe({ onReady }) {
-  useEffect(() => {
-    onReady(true)
-    return () => onReady(false)
-  }, [onReady])
-  return null
-}
-
 /** World-anchored exit for minimal AR landing flow — reliable XR pointers vs DOM overlay. */
 const AR_MINIMAL_EXIT_W = 0.52
 const AR_MINIMAL_EXIT_H = 0.11
@@ -168,60 +159,6 @@ function ArMinimalExitButton3D({ onExit }) {
   )
 }
 
-/** Same interaction stack as minimal exit — replaces unreliable plane `mesh` on onboarding demo step. */
-function OnboardingBeginVisitButton3D({ onBeginVisit }) {
-  const groupRef = useRef(null)
-  const offset = useMemo(() => new Vector3(0, -0.06, -0.68), [])
-  const { camera } = useThree()
-  const fillR = useMemo(() => panelRadiusForSize(AR_MINIMAL_EXIT_W, AR_MINIMAL_EXIT_H, 0.018), [])
-
-  useFrame(() => {
-    if (!groupRef.current) return
-    const worldOffset = offset.clone().applyQuaternion(camera.quaternion)
-    groupRef.current.position.copy(camera.position).add(worldOffset)
-    groupRef.current.quaternion.copy(camera.quaternion)
-  })
-
-  const pick = (e) => {
-    e.stopPropagation()
-    onBeginVisit()
-  }
-
-  return (
-    <group ref={groupRef} renderOrder={1000}>
-      <RoundedRect
-        width={AR_MINIMAL_EXIT_W}
-        height={AR_MINIMAL_EXIT_H}
-        radius={fillR}
-        color="#0b5c3a"
-        opacity={0.94}
-        borderColor="#5ecf8f"
-        borderOpacity={0.55}
-        borderWidth={2}
-        z={-0.002}
-        depthTest={false}
-        pointerEventsOrder={1000}
-        pointerEventsType={xrUiPointerEventsType}
-        onClick={pick}
-        onPointerDown={pick}
-      />
-      <Text
-        position={[0, 0, 0.004]}
-        anchorX="center"
-        anchorY="middle"
-        fontSize={0.026}
-        color="#a8f5d0"
-        pointerEventsOrder={1000}
-        pointerEventsType={xrUiPointerEventsType}
-        onClick={pick}
-        onPointerDown={pick}
-      >
-        Begin visit
-      </Text>
-    </group>
-  )
-}
-
 /** Dom-overlay control so `session.end()` runs from a real DOM tap where the browser requires it. */
 function WebXrSessionEndBar({ onEndSimulation }) {
   return (
@@ -241,6 +178,13 @@ const WEBXR_END_FONT = 0.023 * 0.5
 /** Same vertical tweak as onboarding demo setup — AR visit HUD must stay camera-locked, no full-scene fill. */
 const DEMO_PANEL_H = 0.812
 const activeOffset = new Vector3(0, 0.05 - DEMO_PANEL_H * 0.2, -0.72)
+
+/**
+ * XR swaps camera / projection each frame — using live `camera.fov` / `aspect` recomputes menu layout and makes the
+ * left HUD jump. Freeze layout with the same nominal values as `<Canvas camera={{ fov: 60 }}>` and 16∶9.
+ */
+const XR_HUD_LAYOUT_FOV = (60 * Math.PI) / 180
+const XR_HUD_LAYOUT_ASPECT = 16 / 9
 
 /**
  * Immersive AR visit HUD only: floating panels over passthrough (no SimulatedHUD video plane / scene fill).
@@ -269,9 +213,8 @@ function XRActiveFallback({
 
   const menuLayout = useMemo(() => {
     const depth = Math.abs(activeOffset.z)
-    const fovRad = (camera.fov * Math.PI) / 180
-    const visibleHeight = 2 * Math.tan(fovRad / 2) * depth
-    const visibleWidth = visibleHeight * camera.aspect
+    const visibleHeight = 2 * Math.tan(XR_HUD_LAYOUT_FOV / 2) * depth
+    const visibleWidth = visibleHeight * XR_HUD_LAYOUT_ASPECT
 
     const baseWidth = 0.3
     const minWidth = 0.15
@@ -293,7 +236,7 @@ function XRActiveFallback({
       scale,
       position: [xLeft + panelHalfWidth, yTop - panelTopToOrigin, 0],
     }
-  }, [camera.aspect, camera.fov])
+  }, [])
 
   useFrame(() => {
     if (!groupRef.current) return
@@ -431,7 +374,6 @@ function App() {
   const [patientLiveCaption, setPatientLiveCaption] = useState('Awaiting patient speech...')
   const [speakerAttributionStatus, setSpeakerAttributionStatus] = useState('Awaiting speech...')
   const [budgetSnapshot, setBudgetSnapshot] = useState(() => getSpeechBudgetSnapshot())
-  const [landingXrGlReady, setLandingXrGlReady] = useState(false)
   const [arSupport, setArSupport] = useState({
     checked: false,
     supported: false,
@@ -456,9 +398,6 @@ function App() {
 
   useEffect(() => { phaseRef.current = phase }, [phase])
 
-  const onLandingXrGlReady = useCallback((ready) => {
-    setLandingXrGlReady(ready)
-  }, [])
   const onNativeXrSessionChanged = useCallback((has) => {
     setHasNativeXrSession(has)
   }, [])
@@ -548,22 +487,6 @@ function App() {
       return
     }
     setPhase('onboarding')
-  }
-
-  const handleEnterArMinimal = () => {
-    if (viewportWidth < 690) {
-      setPhase('unsupported-mobile')
-      return
-    }
-    if (!arSupport.checked || !arSupport.supported || !landingXrGlReady) return
-    void xrStore
-      .enterAR()
-      .then(() => {
-        setPhase('ar-minimal')
-      })
-      .catch((err) => {
-        console.warn('enterAR (minimal) failed:', err)
-      })
   }
 
   const handleUnsupportedMobileGoBack = () => {
@@ -930,12 +853,7 @@ function App() {
       }`}
     >
       {phase === 'landing' && (
-        <LandingPage
-          onEnterExperience={handleEnterExperience}
-          onEnterArMinimal={handleEnterArMinimal}
-          arMinimalReady={landingXrGlReady}
-          immersiveArSupported={arSupport.checked && arSupport.supported}
-        />
+        <LandingPage onEnterExperience={handleEnterExperience} />
       )}
       {phase === 'unsupported-mobile' && (
         <UnsupportedMobilePage onGoBack={handleUnsupportedMobileGoBack} />
@@ -998,7 +916,6 @@ function App() {
             <XR store={xrStore}>
               <ImmersivePassthroughSync />
               <XrActiveSessionProbe sessionRef={xrNativeSessionRef} onHasNativeSession={onNativeXrSessionChanged} />
-              {phase === 'landing' && <LandingXrGlReadyProbe onReady={onLandingXrGlReady} />}
               {webxrImmersiveUi ? (
                 <>
                   {phase === 'xr-exiting' && (
@@ -1017,14 +934,11 @@ function App() {
                     </Suspense>
                   )}
                   {phase === 'onboarding' && (
-                    <>
-                      <OnboardingHUD step={onboardingStep} onContinue={handleAdvanceOnboarding} />
-                      {onboardingStep === 3 && (
-                        <Suspense fallback={null}>
-                          <OnboardingBeginVisitButton3D onBeginVisit={handleBeginVisit} />
-                        </Suspense>
-                      )}
-                    </>
+                    <OnboardingHUD
+                      step={onboardingStep}
+                      onContinue={handleAdvanceOnboarding}
+                      onBeginVisit={handleBeginVisit}
+                    />
                   )}
                   {showActiveImmersiveHud && (
                     <>
@@ -1047,14 +961,11 @@ function App() {
                   {phase === 'xr-exiting' ? null : (
                     <>
                       {phase === 'onboarding' && (
-                        <>
-                          <OnboardingHUD step={onboardingStep} onContinue={handleAdvanceOnboarding} />
-                          {onboardingStep === 3 && (
-                            <Suspense fallback={null}>
-                              <OnboardingBeginVisitButton3D onBeginVisit={handleBeginVisit} />
-                            </Suspense>
-                          )}
-                        </>
+                        <OnboardingHUD
+                          step={onboardingStep}
+                          onContinue={handleAdvanceOnboarding}
+                          onBeginVisit={handleBeginVisit}
+                        />
                       )}
                       {phase === 'active' && (
                         <SimulatedHUD
@@ -1075,14 +986,11 @@ function App() {
           ) : (
             <>
               {phase === 'onboarding' && (
-                <>
-                  <OnboardingHUD step={onboardingStep} onContinue={handleAdvanceOnboarding} />
-                  {onboardingStep === 3 && (
-                    <Suspense fallback={null}>
-                      <OnboardingBeginVisitButton3D onBeginVisit={handleBeginVisit} />
-                    </Suspense>
-                  )}
-                </>
+                <OnboardingHUD
+                  step={onboardingStep}
+                  onContinue={handleAdvanceOnboarding}
+                  onBeginVisit={handleBeginVisit}
+                />
               )}
               {phase === 'active' && (
                 <SimulatedHUD
@@ -1107,6 +1015,7 @@ function App() {
           conversation={conversation}
           vitals={vitals}
           sessionStartTime={sessionStartRef.current}
+          onReturnHome={() => setPhase('landing')}
         />
       )}
     </main>

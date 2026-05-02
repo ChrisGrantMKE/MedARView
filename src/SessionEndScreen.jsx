@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { generateAbstract } from './summarize'
 import { saveVisit } from './visitExport'
 
-function SessionEndScreen({ conversation, vitals, sessionStartTime }) {
+function SessionEndScreen({ conversation, vitals, sessionStartTime, onReturnHome }) {
   const [screenPhase, setScreenPhase] = useState('closing')
   const [saveState, setSaveState] = useState('idle') // idle | saving | saved | error
   const [saveError, setSaveError] = useState(null)
@@ -54,6 +54,7 @@ function SessionEndScreen({ conversation, vitals, sessionStartTime }) {
 
   return (
     <div className="session-end review">
+      <div className="session-end-review-main">
       {/* ── Left: Full Transcript ── */}
       <div className="review-panel transcript-panel">
         <h2 className="panel-heading">Full Transcript</h2>
@@ -114,6 +115,13 @@ function SessionEndScreen({ conversation, vitals, sessionStartTime }) {
           production-quality SOAP notes.
         </p>
       </div>
+      </div>
+
+      <footer className="session-end-footer">
+        <button type="button" className="session-end-footer__btn" onClick={onReturnHome}>
+          Return to home page
+        </button>
+      </footer>
     </div>
   )
 }

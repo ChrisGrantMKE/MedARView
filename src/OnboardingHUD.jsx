@@ -1,8 +1,10 @@
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { Text, Image } from '@react-three/drei'
 import { Vector3 } from 'three'
 import seatedOutlineUrl from './assets/Seated.svg'
+import RoundedRect from './hud/RoundedRect'
+import { xrUiPointerEventsType } from './hud/hudTheme'
 
 const obOffset = new Vector3(0, 0.05, -0.72)
 /** Demo setup (step 3): lower HUD ~20% of panel height so it sits less “in the air”. */
@@ -11,6 +13,17 @@ const obOffsetDemoSetup = new Vector3(0, 0.05 - DEMO_PANEL_H * 0.2, -0.72)
 const panelDark = '#091522'
 const btnDefault = '#0e4d7a'
 const btnHover = '#1a6fa8'
+
+/** Matches instruction column (`maxWidth` 0.38); padding ~1rem at HUD scale. */
+const DEMO_INSTRUCTION_FS = 0.019
+const BEGIN_BTN_W = 0.38
+const BEGIN_REM_PAD = 0.018
+const BEGIN_BTN_H = DEMO_INSTRUCTION_FS * 1.25 + 2 * BEGIN_REM_PAD
+
+function beginVisitBtnRadius(w, h) {
+  const half = Math.min(w, h) / 2
+  return Math.min(0.014, Math.max(0.004, half * 0.2))
+}
 
 const STEPS = [
   {
@@ -35,10 +48,19 @@ const STEPS = [
   },
 ]
 
-function OnboardingHUD({ step, onContinue }) {
+function OnboardingHUD({ step, onContinue, onBeginVisit }) {
   const groupRef = useRef(null)
   const { camera } = useThree()
   const [hovering, setHovering] = useState(false)
+
+  const beginFillR = useMemo(() => beginVisitBtnRadius(BEGIN_BTN_W, BEGIN_BTN_H), [])
+
+  /** Left column: instructions start at x = -0.29; button centered under that block. */
+  const beginVisitOffset = useMemo(() => {
+    const centerX = -0.29 + BEGIN_BTN_W / 2
+    const centerY = -0.103
+    return [centerX, centerY, 0.005]
+  }, [])
 
   useFrame(() => {
     if (!groupRef.current) return
@@ -47,6 +69,11 @@ function OnboardingHUD({ step, onContinue }) {
     groupRef.current.position.copy(camera.position).add(worldOffset)
     groupRef.current.quaternion.copy(camera.quaternion)
   })
+
+  const pickBegin = (e) => {
+    e.stopPropagation()
+    onBeginVisit?.()
+  }
 
   // ── Steps 0–2: message panel ──────────────────────────────────────
   if (step < 3) {
@@ -106,7 +133,7 @@ function OnboardingHUD({ step, onContinue }) {
     )
   }
 
-  // ── Step 3: Demo setup (panel + children centered on x=0 so 2D canvas + XR view aren’t biased right)
+  // ── Step 3: Demo setup ────────────────────────────────────────────
   return (
     <group ref={groupRef}>
       <mesh position={[0, 0, -0.002]}>
@@ -122,7 +149,7 @@ function OnboardingHUD({ step, onContinue }) {
         position={[-0.29, 0.06, 0]}
         anchorX="left"
         anchorY="middle"
-        fontSize={0.019}
+        fontSize={DEMO_INSTRUCTION_FS}
         maxWidth={0.38}
         textAlign="left"
         lineHeight={1.5}
@@ -130,6 +157,40 @@ function OnboardingHUD({ step, onContinue }) {
       >
         {`This simulation requires 2 people.\n\nImagine you have entered the visit room wearing your glasses and the patient is having vitals taken.\n\nWith a colleague sitting across from you, say out loud:\n\n"MED VIEW Begin Visit"`}
       </Text>
+
+      {onBeginVisit ? (
+        <group position={beginVisitOffset}>
+          <RoundedRect
+            width={BEGIN_BTN_W}
+            height={BEGIN_BTN_H}
+            radius={beginFillR}
+            color="#0b5c3a"
+            opacity={0.94}
+            borderColor="#5ecf8f"
+            borderOpacity={0.45}
+            borderWidth={1}
+            z={-0.002}
+            depthTest={false}
+            pointerEventsOrder={1000}
+            pointerEventsType={xrUiPointerEventsType}
+            onClick={pickBegin}
+            onPointerDown={pickBegin}
+          />
+          <Text
+            position={[0, 0, 0.004]}
+            anchorX="center"
+            anchorY="middle"
+            fontSize={DEMO_INSTRUCTION_FS}
+            color="#a8f5d0"
+            pointerEventsOrder={1000}
+            pointerEventsType={xrUiPointerEventsType}
+            onClick={pickBegin}
+            onPointerDown={pickBegin}
+          >
+            Begin visit
+          </Text>
+        </group>
+      ) : null}
 
       <mesh position={[0.29, 0.04, -0.003]}>
         <planeGeometry args={[0.22, 0.46]} />
@@ -152,7 +213,7 @@ function OnboardingHUD({ step, onContinue }) {
       </Text>
 
       <Text position={[0.29, -0.28, 0]} anchorX="center" anchorY="middle" fontSize={0.016} maxWidth={0.42} textAlign="center" color="#9dbfe8">
-        Press “Begin visit” ahead of you (center).
+        Tap “Begin visit” under the instructions when ready.
       </Text>
     </group>
   )

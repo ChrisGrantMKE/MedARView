@@ -1,8 +1,6 @@
 import heroImage from './assets/NewHero.png'
 
-function LandingPage({ onEnterExperience, onEnterArMinimal, arMinimalReady, immersiveArSupported }) {
-  const arDisabled = immersiveArSupported === true && !arMinimalReady
-
+function LandingPage({ onEnterExperience }) {
   return (
     <div style={{
       width: '100%',
@@ -13,49 +11,12 @@ function LandingPage({ onEnterExperience, onEnterArMinimal, arMinimalReady, imme
       fontFamily: 'Segoe UI, Tahoma, Geneva, Verdana, sans-serif',
       display: 'flex',
       flexDirection: 'column',
-      /* stretch so children’s width:100% resolves to the padded area (center + zero width broke the hero img) */
       alignItems: 'stretch',
       overflowY: 'auto',
       padding: '40px 20px 0',
       position: 'relative',
       zIndex: 1,
     }}>
-      {/* Minimal WebXR debug entry — passthrough + single exit control */}
-      <div
-        style={{
-          width: '100%',
-          maxWidth: '900px',
-          margin: '0 auto 24px',
-          flexShrink: 0,
-        }}
-      >
-        <button
-          type="button"
-          onClick={onEnterArMinimal}
-          disabled={immersiveArSupported !== true || arDisabled}
-          title={
-            immersiveArSupported !== true
-              ? 'immersive-ar is not available in this browser or context (HTTPS / flags).'
-              : arDisabled
-                ? 'Preparing WebGL…'
-                : 'Enter passthrough AR with only an exit control'
-          }
-          style={{
-            width: '100%',
-            background: immersiveArSupported === true && !arDisabled ? '#1a6bff' : 'rgba(255,255,255,0.18)',
-            color: immersiveArSupported === true && !arDisabled ? '#ffffff' : 'rgba(243,247,252,0.55)',
-            border: '1px solid rgba(172, 203, 255, 0.45)',
-            padding: '22px 28px',
-            fontSize: '1.35rem',
-            fontWeight: 700,
-            borderRadius: '12px',
-            cursor: immersiveArSupported === true && !arDisabled ? 'pointer' : 'not-allowed',
-          }}
-        >
-          Enter AR mode
-        </button>
-      </div>
-
       <div
         style={{
           width: '100%',
@@ -92,14 +53,12 @@ function LandingPage({ onEnterExperience, onEnterArMinimal, arMinimalReady, imme
         </header>
       </div>
 
-      {/* Container for text and video */}
       <div style={{
         maxWidth: '900px',
         width: '100%',
         margin: '0 auto',
         flexShrink: 0,
       }}>
-        {/* Vimeo Video - full width of text container */}
         <div style={{
           marginBottom: '40px',
           paddingBottom: '56.25%',
@@ -121,10 +80,9 @@ function LandingPage({ onEnterExperience, onEnterArMinimal, arMinimalReady, imme
               width: '100%',
               height: '100%',
             }}
-          ></iframe>
+          />
         </div>
 
-        {/* H1 */}
         <h1 style={{
           fontSize: '2.5rem',
           fontWeight: 700,
@@ -135,7 +93,6 @@ function LandingPage({ onEnterExperience, onEnterArMinimal, arMinimalReady, imme
           Welcome to MedARView
         </h1>
 
-        {/* First body copy */}
         <p style={{
           fontSize: '1rem',
           color: '#f3f8ff',
@@ -146,8 +103,6 @@ function LandingPage({ onEnterExperience, onEnterArMinimal, arMinimalReady, imme
           Physicians are losing the ability to be fully present with their patients. Screen-based documentation pulls their attention away during every consultation, reducing eye contact, eroding trust and driving burnout.
         </p>
 
-        
-        {/* First body copy */}
         <p style={{
           fontSize: '1rem',
           color: '#f3f8ff',
@@ -158,7 +113,6 @@ function LandingPage({ onEnterExperience, onEnterArMinimal, arMinimalReady, imme
           MedARView restores presence by moving clinical intelligence into the doctor's field of vision, enabling eye-contact-first care while eliminating the documentation burden that follows every patient encounter.
         </p>
 
-        {/* H2 */}
         <h2 style={{
           fontSize: '1.8rem',
           fontWeight: 600,
@@ -169,7 +123,6 @@ function LandingPage({ onEnterExperience, onEnterArMinimal, arMinimalReady, imme
           Recording & Data Notice
         </h2>
 
-        {/* Second body copy */}
         <p style={{
           fontSize: '1rem',
           color: '#f3f8ff',
@@ -179,9 +132,7 @@ function LandingPage({ onEnterExperience, onEnterArMinimal, arMinimalReady, imme
         }}>
           This app uses your microphone to capture and transcribe conversation audio during a visit session. Audio is streamed to a third-party speech recognition service for transcription and speaker identification. Transcripts are stored temporarily for this session only and are not transmitted to any additional parties.
         </p>
-    
 
-              {/* Second body copy */}
         <p style={{
           fontSize: '1rem',
           color: '#f3f8ff',
@@ -193,7 +144,6 @@ function LandingPage({ onEnterExperience, onEnterArMinimal, arMinimalReady, imme
         </p>
       </div>
 
-      {/* Enter Experience Button - full width of text container */}
       <div style={{
         maxWidth: '900px',
         width: '100%',
@@ -201,6 +151,7 @@ function LandingPage({ onEnterExperience, onEnterArMinimal, arMinimalReady, imme
         flexShrink: 0,
       }}>
         <button
+          type="button"
           onClick={onEnterExperience}
           style={{
             width: '100%',
@@ -213,8 +164,8 @@ function LandingPage({ onEnterExperience, onEnterArMinimal, arMinimalReady, imme
             borderRadius: '8px',
             cursor: 'pointer',
           }}
-          onMouseOver={(e) => e.target.style.background = '#e8f4ff'}
-          onMouseOut={(e) => e.target.style.background = '#ffffff'}
+          onMouseOver={(e) => { e.target.style.background = '#e8f4ff' }}
+          onMouseOut={(e) => { e.target.style.background = '#ffffff' }}
         >
           Enter Experience
         </button>
@@ -237,6 +188,5 @@ function LandingPage({ onEnterExperience, onEnterArMinimal, arMinimalReady, imme
     </div>
   )
 }
-
 
 export default LandingPage
