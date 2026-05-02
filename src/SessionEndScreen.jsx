@@ -2,8 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { generateAbstract } from './summarize'
 import { saveVisit } from './visitExport'
 
+const CLOSING_DOT_INTERVAL_MS = 900
+
 function SessionEndScreen({ conversation, vitals, sessionStartTime, onReturnHome }) {
   const [screenPhase, setScreenPhase] = useState('closing')
+  const [closingDotsShown, setClosingDotsShown] = useState(0)
   const [saveState, setSaveState] = useState('idle') // idle | saving | saved | error
   const [saveError, setSaveError] = useState(null)
 
@@ -13,6 +16,16 @@ function SessionEndScreen({ conversation, vitals, sessionStartTime, onReturnHome
   useEffect(() => {
     const t = setTimeout(() => setScreenPhase('review'), 5000)
     return () => clearTimeout(t)
+  }, [])
+
+  useEffect(() => {
+    const timers = []
+    for (let i = 1; i <= 5; i++) {
+      timers.push(
+        window.setTimeout(() => setClosingDotsShown(i), (i - 1) * CLOSING_DOT_INTERVAL_MS),
+      )
+    }
+    return () => timers.forEach((id) => window.clearTimeout(id))
   }, [])
 
   const abstract = useMemo(
@@ -47,6 +60,14 @@ function SessionEndScreen({ conversation, vitals, sessionStartTime, onReturnHome
         <div className="closing-message">
           <p>Glasses being taken off.</p>
           <p>Notes being exported for the Doctor.</p>
+          <div className="closing-dots" aria-hidden>
+            {[1, 2, 3, 4, 5].map((n) => (
+              <span
+                key={n}
+                className={`closing-dot${closingDotsShown >= n ? ' closing-dot--on' : ''}`}
+              />
+            ))}
+          </div>
         </div>
       </div>
     )

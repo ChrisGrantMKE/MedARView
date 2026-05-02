@@ -185,6 +185,13 @@ const activeOffset = new Vector3(0, 0.05 - DEMO_PANEL_H * 0.2, -0.72)
  */
 const XR_HUD_LAYOUT_FOV = (60 * Math.PI) / 180
 const XR_HUD_LAYOUT_ASPECT = 16 / 9
+/** Extra scale on `HudMenuPanel` in immersive AR (1 = base layout scale only). */
+const XR_MENU_VISUAL_SCALE = 0.8
+/**
+ * Menu backdrop width in local units — must match `HudMenuPanel`: `overlayBarW` + 2×`MENU_BACKDROP_PAD`.
+ * Used to align menu right edge with the End Simulation pill’s left edge.
+ */
+const HUD_MENU_BACKDROP_W = 0.3 + 2 * 0.024
 
 /**
  * Immersive AR visit HUD only: floating panels over passthrough (no SimulatedHUD video plane / scene fill).
@@ -225,16 +232,19 @@ function XRActiveFallback({
         : Math.max(minWidth, baseWidth - (baseWidth - quarterViewport) * 0.5)
     const scale = easedWidth / baseWidth
 
-    const leftPadding = 0.02
     const topPadding = 0.06
-    const xLeft = -visibleWidth / 2 + leftPadding
     const yTop = visibleHeight / 2 - topPadding
-    const panelHalfWidth = (baseWidth * scale) / 2
     const panelTopToOrigin = 0.34 * scale
 
+    const menuScaleApplied = scale * XR_MENU_VISUAL_SCALE
+    const menuHalfWorldX = (HUD_MENU_BACKDROP_W / 2) * menuScaleApplied
+    /** End Simulation group is at x=0; pill is centered — left edge at -WEBXR_END_W/2. */
+    const endSimLeftEdgeX = -WEBXR_END_W / 2
+    const menuCenterX = endSimLeftEdgeX - menuHalfWorldX
+
     return {
-      scale,
-      position: [xLeft + panelHalfWidth, yTop - panelTopToOrigin, 0],
+      scale: menuScaleApplied,
+      position: [menuCenterX, yTop - panelTopToOrigin, 0],
     }
   }, [])
 
@@ -680,6 +690,22 @@ function App() {
 
   const handleAdvanceOnboarding = () => setOnboardingStep(prev => prev + 1)
 
+  /** Demo setup: 3D “Enter / Exit AR mode” toggles immersive session (DOM AR button hidden on this step). */
+  const handleDemoSetupToggleAr = useCallback(() => {
+    const session = xrStore.getState().session
+    if (session != null) {
+      try {
+        session.end()
+      } catch {
+        /* ignore */
+      }
+      return
+    }
+    void xrStore.enterAR().catch((err) => {
+      console.error(err)
+    })
+  }, [])
+
   /**
    * Shared path for leaving immersive AR without unmounting `<Canvas>` until `session` has ended
    * (avoids Quest black compositor void). Used by minimal AR exit and “End simulation”.
@@ -867,7 +893,8 @@ function App() {
         arSupport.checked &&
         arSupport.supported && (
         <>
-          <div className={`ar-controls ar-controls__primary${isWebXrDemoSetup ? ' ar-controls__primary--demo-setup' : ''}`}>
+          {!isWebXrDemoSetup && (
+          <div className="ar-controls ar-controls__primary">
             <ARButton className="ar-toggle" store={xrStore}>
               {(status) => {
                 if (status === 'unsupported') return 'AR Unsupported'
@@ -876,6 +903,7 @@ function App() {
               }}
             </ARButton>
           </div>
+          )}
           <div className="ar-controls ar-controls__diagnostics runtime-diagnostics" role="status" aria-live="polite">
             <div>{`AR: ${arSupport.reason}`}</div>
             <div>{`Mic: ${speechSupported ? `${micStatus} | permission: ${micPermission}` : 'unsupported'}`}</div>
@@ -938,6 +966,9 @@ function App() {
                       step={onboardingStep}
                       onContinue={handleAdvanceOnboarding}
                       onBeginVisit={handleBeginVisit}
+                      demoSetupArSupported
+                      inArMode={xrSession != null}
+                      onToggleDemoArMode={handleDemoSetupToggleAr}
                     />
                   )}
                   {showActiveImmersiveHud && (
@@ -965,6 +996,9 @@ function App() {
                           step={onboardingStep}
                           onContinue={handleAdvanceOnboarding}
                           onBeginVisit={handleBeginVisit}
+                          demoSetupArSupported
+                          inArMode={xrSession != null}
+                          onToggleDemoArMode={handleDemoSetupToggleAr}
                         />
                       )}
                       {phase === 'active' && (
@@ -990,6 +1024,9 @@ function App() {
                   step={onboardingStep}
                   onContinue={handleAdvanceOnboarding}
                   onBeginVisit={handleBeginVisit}
+                  demoSetupArSupported={false}
+                  inArMode={false}
+                  onToggleDemoArMode={undefined}
                 />
               )}
               {phase === 'active' && (

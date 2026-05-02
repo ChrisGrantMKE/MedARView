@@ -4,6 +4,7 @@ import { Text, useVideoTexture } from '@react-three/drei'
 import { Color, Vector3 } from 'three'
 
 import HudMenuPanel from './hud/HudMenuPanel'
+import PatientLiveTickerPlane from './hud/PatientLiveTickerPlane'
 import RoundedRect from './hud/RoundedRect'
 import patientVideoUrl from './assets/patient.mp4'
 
@@ -20,14 +21,12 @@ const panelColor = new Color('#091522')
 const PATIENT_BG_WIDTH = 1.4 * 1.1
 const PATIENT_BG_HEIGHT = 1.2
 
-/** Patient live chip: top-right; 50% of prior 0.72 width */
-const PATIENT_LIVE_W = 0.72 * 0.5
-const PATIENT_LIVE_H = 0.1
-const PATIENT_LIVE_INSET_X = 0.02
-const PATIENT_LIVE_INSET_Y = 0.02
-
 const CONV_W = 0.56
-const CONV_H = 0.26
+/** Room for header + Utterances + bottom patient ticker strip */
+const CONV_H = 0.33
+const TICKER_ROW_H = 0.058
+/** Ticker marquee width (conversation panel minus label + padding) */
+const TICKER_PLANE_W = CONV_W - 0.22
 const END_SIM_W = 0.42 * 0.5
 const END_SIM_H = 0.068 * 0.5
 const END_SIM_FONT = 0.023 * 0.5
@@ -116,13 +115,6 @@ function SimulatedHUD({
     return { visibleHeight, visibleWidth }
   }, [camera.aspect, camera.fov])
 
-  const patientLivePosition = useMemo(() => {
-    const { visibleHeight, visibleWidth } = viewBounds
-    const x = visibleWidth / 2 - PATIENT_LIVE_W / 2 - PATIENT_LIVE_INSET_X
-    const y = visibleHeight / 2 - PATIENT_LIVE_H / 2 - PATIENT_LIVE_INSET_Y
-    return [x, y, 0]
-  }, [viewBounds])
-
   /** Conversation above end bar; right inset matches top-right live chip. */
   const lowerRightLayout = useMemo(() => {
     const { visibleHeight, visibleWidth } = viewBounds
@@ -144,8 +136,8 @@ function SimulatedHUD({
 
   const recentConvo = conversation.slice(-3)
 
-  const patientLiveR = panelRadiusForSize(PATIENT_LIVE_W, PATIENT_LIVE_H)
   const convR = panelRadiusForSize(CONV_W, CONV_H)
+  const patientSpeaking = activeSpeaker === 'Patient'
   const endSimR = panelRadiusForSize(END_SIM_W, END_SIM_H, 0.014)
 
   return (
@@ -174,39 +166,6 @@ function SimulatedHUD({
       </Suspense>
 
       <>
-        {/* On top of video area: caption + simulated mic note in one panel */}
-        <group position={patientLivePosition}>
-          <RoundedRect
-            width={PATIENT_LIVE_W}
-            height={PATIENT_LIVE_H}
-            radius={patientLiveR}
-            color={panelColor}
-            opacity={0.72}
-            borderColor="#5a7a9a"
-            borderOpacity={0.35}
-            borderWidth={1}
-            z={-0.002}
-          />
-          <Text position={[-PATIENT_LIVE_W / 2 + 0.01, 0.028, 0]} anchorX="left" anchorY="middle" fontSize={0.013} color="#f3c96b">
-            PATIENT LIVE
-          </Text>
-          <Text position={[-PATIENT_LIVE_W / 2 + 0.01, 0.004, 0]} anchorX="left" anchorY="middle" fontSize={0.01} color="#9dbfe8">
-            Mic: disabled (simulated mode)
-          </Text>
-          <Text
-            position={[-PATIENT_LIVE_W / 2 + 0.01, -0.024, 0]}
-            anchorX="left"
-            anchorY="top"
-            fontSize={0.014}
-            color="#fff6de"
-            maxWidth={0.32}
-            textAlign="left"
-            lineHeight={1.25}
-          >
-            {patientLiveCaption || 'Awaiting patient speech...'}
-          </Text>
-        </group>
-
         <group position={lowerRightLayout.conversation}>
           <RoundedRect
             width={CONV_W}
@@ -234,13 +193,16 @@ function SimulatedHUD({
           <Text position={[CONV_W / 2 - 0.01, 0.014, 0]} anchorX="right" anchorY="middle" fontSize={0.011} color="#3f6888" maxWidth={0.21} textAlign="right">
             {budgetStatus ? `Budget: ${budgetStatus}` : 'Budget: --'}
           </Text>
+          <Text position={[-CONV_W / 2 + 0.01, -0.014, 0]} anchorX="left" anchorY="middle" fontSize={0.01} color="#5a7a90">
+            Simulated · mic disabled
+          </Text>
           {recentConvo.length === 0 ? (
-            <Text position={[-CONV_W / 2 + 0.01, 0.006, 0]} anchorX="left" anchorY="middle" fontSize={0.018} color="#3a5a70">
+            <Text position={[-CONV_W / 2 + 0.01, -0.002, 0]} anchorX="left" anchorY="middle" fontSize={0.018} color="#3a5a70">
               Conversation will appear here...
             </Text>
           ) : (
             recentConvo.map((entry, i) => {
-              const yPos = 0.03 - i * 0.052
+              const yPos = 0.025 - i * 0.046
               const label = entry.speaker === 'Doctor' ? 'Dr' : 'Pt'
               const labelColor = entry.speaker === 'Doctor' ? '#8af3d1' : '#f3c96b'
               const truncated = entry.text.length > 46 ? entry.text.slice(0, 46) + '\u2026' : entry.text
@@ -256,6 +218,39 @@ function SimulatedHUD({
               )
             })
           )}
+
+          {/* Patient live caption: bottom strip of this panel only while patient is attributed speaker */}
+          <group position={[0, -CONV_H / 2 + TICKER_ROW_H / 2 + 0.014, 0.003]}>
+            <RoundedRect
+              width={CONV_W - 0.024}
+              height={TICKER_ROW_H}
+              radius={panelRadiusForSize(CONV_W - 0.024, TICKER_ROW_H, 0.012)}
+              color={panelColor}
+              opacity={0.85}
+              borderColor="#6b4f2a"
+              borderOpacity={patientSpeaking ? 0.45 : 0.18}
+              borderWidth={1}
+              z={-0.002}
+            />
+            <Text
+              position={[-CONV_W / 2 + 0.036, 0, 0.004]}
+              anchorX="left"
+              anchorY="middle"
+              fontSize={0.012}
+              color={patientSpeaking ? '#f3c96b' : '#6a7a88'}
+            >
+              Patient
+            </Text>
+            <group position={[(-CONV_W / 2 + 0.1) + TICKER_PLANE_W / 2, 0, 0]}>
+              <PatientLiveTickerPlane
+                text={patientSpeaking ? (patientLiveCaption || 'Awaiting patient speech...') : ''}
+                worldWidth={TICKER_PLANE_W}
+                worldHeight={TICKER_ROW_H - 0.012}
+                active={patientSpeaking}
+                speed={0.055}
+              />
+            </group>
+          </group>
         </group>
 
         <group position={lowerRightLayout.endSimulation}>
